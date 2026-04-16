@@ -1,0 +1,408 @@
+{
+  "company": {
+    "name": "TechCorp Inc.",
+    "founded": 2015,
+    "headquarters": {
+      "address": {
+        "street": "123 Innovation Drive",
+        "city": "San Francisco",
+        "state": "CA",
+        "coordinates": {
+          "latitude": 37.7749,
+          "longitude": -122.4194
+        }
+      },
+      "contact": {
+        "phone": "+1-555-0123",
+        "email": "info@techcorp.com",
+        "website": "https://www.techcorp.com"
+      }
+    },
+    "departments": [
+      {
+        "id": "dept-001",
+        "name": "Engineering",
+        "manager": {
+          "employeeId": "EMP-1001",
+          "personalInfo": {
+            "name": "Alice Johnson",
+            "age": 35,
+            "gender": "female",
+            "contact": {
+              "email": "alice.johnson@techcorp.com",
+              "phone": "+1-555-0201",
+              "emergencyContact": {
+                "name": "Bob Johnson",
+                "relationship": "spouse",
+                "phone": "+1-555-0202"
+              }
+            }
+          },
+          "skills": ["JavaScript", "Python", "System Design"],
+          "yearsOfExperience": 12
+        },
+        "employees": [
+          {
+            "employeeId": "EMP-1002",
+            "name": "Charlie Brown",
+            "position": "Senior Developer",
+            "salary": 95000,
+            "hireDate": "2018-03-15",
+            "active": true,
+            "metadata": "{\"department\": \"Engineering\", \"level\": \"L5\", \"clearance\": \"high\", \"accessRights\": [\"code\", \"deploy\", \"admin\"]}",
+            "projects": [
+              {
+                "projectId": "PROJ-101",
+                "projectName": "E-commerce Platform",
+                "role": "Lead Developer",
+                "startDate": "2023-01-10",
+                "status": "in-progress",
+                "configuration": "{\"environment\": \"production\", \"replicas\": 3, \"autoScaling\": {\"enabled\": true, \"minInstances\": 2, \"maxInstances\": 10}}",
+                "budget": {
+                  "allocated": 500000,
+                  "spent": 325000,
+                  "currency": "USD"
+                },
+                "team": [
+                  {
+                    "memberId": "EMP-1002",
+                    "name": "Charlie Brown",
+                    "contribution": 40,
+                    "responsibilities": "{\"primary\": \"Architecture\", \"secondary\": [\"Code Review\", \"Mentoring\"], \"hoursPerWeek\": 40}"
+                  },
+                  {
+                    "memberId": "EMP-1003",
+                    "name": "Diana Prince",
+                    "contribution": 35
+                  },
+                  {
+                    "memberId": "EMP-1004",
+                    "name": "Edward Norton",
+                    "contribution": 25
+                  }
+                ]
+              },
+              {
+                "projectId": "PROJ-102",
+                "projectName": "Mobile App Redesign",
+                "role": "Technical Advisor",
+                "startDate": "2023-06-01",
+                "status": "completed",
+                "completionDate": "2023-12-31",
+                "rating": 4.8
+              }
+            ],
+            "performance": {
+              "lastReview": {
+                "date": "2024-01-15",
+                "score": 4.5,
+                "reviewer": {
+                  "name": "Alice Johnson",
+                  "title": "Engineering Manager"
+                },
+                "comments": "Excellent technical skills and leadership",
+                "goals": {
+                  "technical": [
+                    "Master Kubernetes",
+                    "Learn Rust programming"
+                  ],
+                  "leadership": [
+                    "Mentor junior developers",
+                    "Lead code review sessions"
+                  ]
+                }
+              },
+              "previousReviews": [
+                {
+                  "date": "2023-01-15",
+                  "score": 4.2,
+                  "highlights": "Strong problem-solving abilities"
+                },
+                {
+                  "date": "2022-01-15",
+                  "score": 4.0,
+                  "highlights": "Good team player"
+                }
+              ]
+            }
+          },
+          {
+            "employeeId": "EMP-1003",
+            "name": "Diana Prince",
+            "position": "Frontend Developer",
+            "salary": 88000,
+            "hireDate": "2019-07-20",
+            "active": true,
+            "skills": ["React", "TypeScript", "CSS"],
+            "preferences": "{\"theme\": \"dark\", \"language\": \"en-US\", \"notifications\": {\"email\": true, \"slack\": true, \"sms\": false}}",
+            "certifications": [
+              {
+                "name": "AWS Certified Developer",
+                "issuedBy": "Amazon Web Services",
+                "issueDate": "2022-05-10",
+                "expiryDate": "2025-05-10",
+                "credentialId": "AWS-DEV-2022-5678",
+                "verificationData": "{\"url\": \"https://aws.amazon.com/verification\", \"code\": \"ABC123XYZ\", \"validUntil\": \"2025-05-10T23:59:59Z\"}"
+              }
+            ]
+          },
+          {
+            "employeeId": "EMP-1004",
+            "name": "Edward Norton",
+            "position": "Backend Developer",
+            "salary": 92000,
+            "hireDate": "2020-02-01",
+            "active": false,
+            "terminationDate": "2024-01-31",
+            "reason": "Career change"
+          }
+        ],
+        "budget": {
+          "annual": 2500000,
+          "quarterly": [
+            {
+              "quarter": "Q1-2024",
+              "allocated": 625000,
+              "spent": 580000,
+              "categories": {
+                "salaries": 450000,
+                "tools": 80000,
+                "training": 50000
+              }
+            },
+            {
+              "quarter": "Q2-2024",
+              "allocated": 625000,
+              "spent": 0,
+              "categories": {
+                "salaries": 450000,
+                "tools": 100000,
+                "training": 75000
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "dept-002",
+        "name": "Marketing",
+        "manager": {
+          "employeeId": "EMP-2001",
+          "personalInfo": {
+            "name": "Fiona Green",
+            "age": 42,
+            "contact": {
+              "email": "fiona.green@techcorp.com",
+              "phone": "+1-555-0301"
+            }
+          },
+          "yearsOfExperience": 15
+        },
+        "campaigns": [
+          {
+            "campaignId": "CMP-201",
+            "name": "Summer Sale 2024",
+            "status": "active",
+            "startDate": "2024-06-01",
+            "endDate": "2024-08-31",
+            "budget": 150000,
+            "channels": [
+              {
+                "channel": "Social Media",
+                "platforms": [
+                  {
+                    "name": "Facebook",
+                    "spend": 30000,
+                    "impressions": 500000,
+                    "clicks": 15000,
+                    "targeting": "{\"ageRange\": \"25-45\", \"interests\": [\"technology\", \"shopping\"], \"locations\": [\"US\", \"CA\", \"UK\"]}",
+                    "conversions": {
+                      "total": 1200,
+                      "rate": 0.08,
+                      "revenue": 48000
+                    }
+                  },
+                  {
+                    "name": "Instagram",
+                    "spend": 25000,
+                    "impressions": 450000,
+                    "clicks": 18000,
+                    "conversions": {
+                      "total": 1500,
+                      "rate": 0.083,
+                      "revenue": 60000
+                    }
+                  }
+                ]
+              },
+              {
+                "channel": "Email",
+                "sent": 100000,
+                "opened": 35000,
+                "clicked": 8000,
+                "converted": 500
+              }
+            ],
+            "metrics": {
+              "totalSpend": 120000,
+              "totalRevenue": 350000,
+              "roi": 2.92,
+              "customerAcquisitionCost": 85
+            }
+          }
+        ]
+      },
+      {
+        "id": "dept-003",
+        "name": "Sales",
+        "manager": {
+          "employeeId": "EMP-3001",
+          "personalInfo": {
+            "name": "George Harris",
+            "age": 38,
+            "contact": {
+              "email": "george.harris@techcorp.com"
+            }
+          },
+          "yearsOfExperience": 10
+        },
+        "regions": [
+          {
+            "region": "North America",
+            "countries": [
+              {
+                "country": "United States",
+                "states": [
+                  {
+                    "state": "California",
+                    "cities": [
+                      {
+                        "city": "San Francisco",
+                        "salesRep": {
+                          "name": "Hannah White",
+                          "employeeId": "EMP-3010",
+                          "quota": {
+                            "annual": 500000,
+                            "achieved": 425000,
+                            "percentage": 85
+                          },
+                          "clients": [
+                            {
+                              "clientId": "CLI-5001",
+                              "companyName": "StartupXYZ",
+                              "contractValue": 120000,
+                              "startDate": "2023-09-01",
+                              "renewalDate": "2024-09-01",
+                              "status": "active",
+                              "contractTerms": "{\"paymentTerms\": \"Net 30\", \"autoRenew\": true, \"penaltyClause\": \"Early termination fee: $10,000\"}",
+                              "contacts": [
+                                {
+                                  "name": "Ivan Petrov",
+                                  "title": "CTO",
+                                  "email": "ivan@startupxyz.com",
+                                  "phone": "+1-555-5001"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "products": [
+      {
+        "productId": "PROD-001",
+        "name": "CloudSync Pro",
+        "category": "Software",
+        "version": {
+          "major": 3,
+          "minor": 2,
+          "patch": 1,
+          "releaseNotes": {
+            "features": [
+              "Enhanced security",
+              "Improved performance",
+              "New API endpoints"
+            ],
+            "bugFixes": [
+              "Fixed login issue",
+              "Resolved sync conflicts"
+            ]
+          },
+          "compatibility": "{\"minOSVersion\": \"10.15\", \"supportedBrowsers\": [\"Chrome\", \"Firefox\", \"Safari\"], \"deprecated\": [\"IE11\", \"Edge Legacy\"]}"
+        },
+        "pricing": {
+          "tiers": [
+            {
+              "tier": "Basic",
+              "price": 29.99,
+              "billingCycle": "monthly",
+              "features": {
+                "storage": "100GB",
+                "users": 5,
+                "support": "email"
+              }
+            },
+            {
+              "tier": "Professional",
+              "price": 79.99,
+              "billingCycle": "monthly",
+              "features": {
+                "storage": "1TB",
+                "users": 25,
+                "support": "priority",
+                "apiAccess": true
+              },
+              "limits": "{\"apiCallsPerDay\": 10000, \"maxFileSize\": \"100MB\", \"concurrentConnections\": 50}"
+            },
+            {
+              "tier": "Enterprise",
+              "price": 199.99,
+              "billingCycle": "monthly",
+              "features": {
+                "storage": "unlimited",
+                "users": "unlimited",
+                "support": "24/7 dedicated",
+                "apiAccess": true,
+                "customIntegrations": true
+              }
+            }
+          ]
+        },
+        "metrics": {
+          "totalUsers": 15000,
+          "activeUsers": 12500,
+          "churnRate": 0.05,
+          "monthlyRecurringRevenue": 450000
+        }
+      }
+    ],
+    "financials": {
+      "year": 2024,
+      "quarters": [
+        {
+          "quarter": "Q1",
+          "revenue": 2500000,
+          "expenses": {
+            "operational": 1200000,
+            "salaries": 800000,
+            "marketing": 300000,
+            "research": 200000
+          },
+          "profit": {
+            "gross": 1300000,
+            "net": 750000,
+            "margin": 0.30
+          }
+        }
+      ]
+    }
+  }
+}
