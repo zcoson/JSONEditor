@@ -1,12 +1,16 @@
 use std::fs;
+use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, menu::{Menu, MenuItem, Submenu, PredefinedMenuItem, AboutMetadata, IsMenuItem}};
+use tauri::{Emitter, Manager, menu::{Menu, MenuItem, Submenu, PredefinedMenuItem, AboutMetadata, IsMenuItem}};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileInfo {
     pub content: String,
     pub path: String,
 }
+
+// Store for pending file to open (used when app is launched via file double-click)
+struct PendingFile(Arc<Mutex<Option<String>>>);
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
@@ -35,16 +39,27 @@ fn compress_json(content: String) -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+fn get_pending_file(app: tauri::AppHandle) -> Option<String> {
+    let pending = app.state::<PendingFile>();
+    let mut guard = pending.0.lock().unwrap();
+    guard.take()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let pending_file = Arc::new(Mutex::new(None::<String>));
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .manage(PendingFile(pending_file.clone()))
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
             remove_escape,
-            compress_json
+            compress_json,
+            get_pending_file
         ])
         .setup(move |app| {
             // Handle file open events from macOS
@@ -199,7 +214,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app, event| {
+    app.run(move |app, event| {
         // Handle file open events from macOS (double-click to open)
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = event {
@@ -208,7 +223,13 @@ pub fn run() {
                 if url.scheme() == "file" {
                     if let Ok(path) = url.to_file_path() {
                         let path_str = path.to_string_lossy().to_string();
-                        // Emit event to frontend with the file path
+                        // Store the pending file for frontend to pick up
+                        {
+                            let pending = app.state::<PendingFile>();
+                            let mut guard = pending.0.lock().unwrap();
+                            *guard = Some(path_str.clone());
+                        }
+                        // Also emit event in case frontend is already ready
                         let _ = app.emit("file-opened", path_str);
                     }
                 }
