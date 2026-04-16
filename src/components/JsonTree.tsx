@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo, useMemo } from 'react';
 import type { JsonValue } from '../utils/jsonUtils';
 import { getValueType } from '../utils/jsonUtils';
 
@@ -40,7 +40,16 @@ function collectAllPaths(value: JsonValue, basePath: (string | number)[]): strin
   return paths;
 }
 
-function TreeNode({
+// Helper function to compare paths without JSON.stringify
+function pathsEqual(a: (string | number)[], b: (string | number)[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+const TreeNode = memo(function TreeNode({
   nodeKey,
   value,
   path,
@@ -54,14 +63,15 @@ function TreeNode({
   const type = getValueType(value);
   const pathKey = path.join('.');
   const isExpanded = expandedMap.get(pathKey) ?? true;
-  const isSelected = JSON.stringify(path) === JSON.stringify(selectedPath);
+  const isSelected = pathsEqual(path, selectedPath);
 
   const isExpandable = type === 'object' || type === 'array';
-  const entries: [string, JsonValue][] = isExpandable
-    ? type === 'object'
+  const entries: [string, JsonValue][] = useMemo(() => {
+    if (!isExpandable) return [];
+    return type === 'object'
       ? Object.entries(value as Record<string, JsonValue>)
-      : (value as JsonValue[]).map((v, i) => [i.toString(), v])
-    : [];
+      : (value as JsonValue[]).map((v, i) => [i.toString(), v]);
+  }, [isExpandable, type, value]);
 
   const handleClick = () => {
     onSelect(path);
@@ -166,7 +176,7 @@ function TreeNode({
       )}
     </div>
   );
-}
+});
 
 export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
   const [expandedMap, setExpandedMap] = useState<Map<string, boolean>>(new Map());

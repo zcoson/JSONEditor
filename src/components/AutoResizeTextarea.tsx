@@ -35,12 +35,13 @@ export const AutoResizeTextarea = forwardRef<HTMLTextAreaElement, AutoResizeText
       }
     }, [value]);
 
-    // Restore cursor position after render
+    // Restore cursor position after render - only when we have a saved position
     useLayoutEffect(() => {
       const el = textareaRef.current;
-      if (el && selectionRef.current) {
-        el.selectionStart = selectionRef.current.start;
-        el.selectionEnd = selectionRef.current.end;
+      const sel = selectionRef.current;
+      if (el && sel) {
+        el.selectionStart = sel.start;
+        el.selectionEnd = sel.end;
       }
     });
 

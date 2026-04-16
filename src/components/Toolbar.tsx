@@ -74,10 +74,6 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
     onFontSizeChange(Math.max(fontSize - 1, 10));
   };
 
-  const handleZoomReset = () => {
-    onFontSizeChange(16);
-  };
-
   return (
     <div className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200 shadow-sm">
       {/* File path and open button on the left */}

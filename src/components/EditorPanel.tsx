@@ -1,12 +1,26 @@
-import { memo, useState, useRef, useEffect } from 'react';
+import { memo, useState, useRef, useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type { JsonValue } from '../utils/jsonUtils';
 import { getValueType, getValueAtPath } from '../utils/jsonUtils';
 import { AutoResizeTextarea } from './AutoResizeTextarea';
 
-// JSON syntax highlighter
+// JSON syntax highlighter - memoized result type
+interface HighlightCache {
+  json: string;
+  result: ReactNode;
+}
+
+// Module-level cache for highlight results
+let highlightCache: HighlightCache | null = null;
+
+// JSON syntax highlighter with caching
 function highlightJson(json: string): ReactNode {
+  // Check cache
+  if (highlightCache && highlightCache.json === json) {
+    return highlightCache.result;
+  }
+
   const parts: ReactNode[] = [];
   let key = 0;
 
@@ -52,7 +66,10 @@ function highlightJson(json: string): ReactNode {
     parts.push(<span key={key++}>{json.slice(lastIndex)}</span>);
   }
 
-  return parts;
+  // Cache result
+  const result = parts;
+  highlightCache = { json, result };
+  return result;
 }
 
 // Module-level variable to remember the last mode in this session
@@ -526,64 +543,74 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
   const isComplex = type === 'object' || type === 'array';
 
   // Apply filter expression to the data
-  const getFilteredValue = (value: JsonValue): { result: JsonValue | null; error: string | null } => {
-    if (!filterExpr.trim()) {
-      return { result: value, error: null };
-    }
+  const getFilteredValue = useMemo(() => {
+    return (value: JsonValue): { result: JsonValue | null; error: string | null } => {
+      if (!filterExpr.trim()) {
+        return { result: value, error: null };
+      }
 
-    try {
-      // Helper functions for statistics
-      const sum = (arr: (number | string)[]) => arr.reduce((a: number, b) => {
-        const num = typeof b === 'number' ? b : (typeof b === 'string' && !isNaN(Number(b)) ? Number(b) : 0);
-        return a + num;
-      }, 0);
-      const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-      const count = (arr: unknown[]) => arr.length;
-      const min = (arr: number[]) => Math.min(...arr);
-      const max = (arr: number[]) => Math.max(...arr);
-      const unique = (arr: unknown[]) => [...new Set(arr)];
-      const groupBy = (arr: Record<string, unknown>[], key: string | ((item: Record<string, unknown>) => string)) => {
-        const result: Record<string, Record<string, unknown>[]> = {};
-        for (const item of arr) {
-          const k = typeof key === 'function' ? key(item) : String(item[key]);
-          (result[k] = result[k] || []).push(item);
-        }
-        return result;
-      };
+      // Security: limit expression length to prevent DoS
+      if (filterExpr.length > 500) {
+        return { result: null, error: 'Expression too long (max 500 chars)' };
+      }
 
-      // Create a safe evaluation context
-      const func = new Function('root', 'sum', 'avg', 'count', 'min', 'max', 'unique', 'groupBy', `
-        try {
-          const result = ${filterExpr};
+      try {
+        // Helper functions for statistics
+        const sum = (arr: (number | string)[]) => arr.reduce((a: number, b) => {
+          const num = typeof b === 'number' ? b : (typeof b === 'string' && !isNaN(Number(b)) ? Number(b) : 0);
+          return a + num;
+        }, 0);
+        const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+        const count = (arr: unknown[]) => arr.length;
+        const min = (arr: number[]) => arr.length ? Math.min(...arr) : 0;
+        const max = (arr: number[]) => arr.length ? Math.max(...arr) : 0;
+        const unique = (arr: unknown[]) => [...new Set(arr)];
+        const groupBy = (arr: Record<string, unknown>[], key: string | ((item: Record<string, unknown>) => string)) => {
+          const result: Record<string, Record<string, unknown>[]> = {};
+          for (const item of arr) {
+            const k = typeof key === 'function' ? key(item) : String(item[key]);
+            (result[k] = result[k] || []).push(item);
+          }
           return result;
-        } catch (e) {
-          throw new Error('Filter error: ' + e.message);
+        };
+
+        // Create a safe evaluation context
+        // Note: This is intentionally allowing user expressions for data transformation
+        // The expression length is limited above to mitigate DoS risk
+        const func = new Function('root', 'sum', 'avg', 'count', 'min', 'max', 'unique', 'groupBy', `
+          "use strict";
+          try {
+            const result = ${filterExpr};
+            return result;
+          } catch (e) {
+            throw new Error('Filter error: ' + e.message);
+          }
+        `);
+        const result = func(value, sum, avg, count, min, max, unique, groupBy);
+
+        // Validate result is JSON-serializable
+        if (result === undefined) {
+          return { result: null, error: null };
         }
-      `);
-      const result = func(value, sum, avg, count, min, max, unique, groupBy);
 
-      // Validate result is JSON-serializable
-      if (result === undefined) {
-        return { result: null, error: null };
+        // Check if result is a valid JSON value (not a function, etc.)
+        if (typeof result === 'function') {
+          return { result: null, error: 'Result is a function, not JSON data' };
+        }
+
+        // Try to serialize to validate it's valid JSON
+        const serialized = JSON.stringify(result);
+        if (serialized === undefined) {
+          return { result: null, error: 'Result cannot be serialized to JSON' };
+        }
+
+        return { result, error: null };
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        return { result: null, error: errorMsg };
       }
-
-      // Check if result is a valid JSON value (not a function, etc.)
-      if (typeof result === 'function') {
-        return { result: null, error: 'Result is a function, not JSON data' };
-      }
-
-      // Try to serialize to validate it's valid JSON
-      const serialized = JSON.stringify(result);
-      if (serialized === undefined) {
-        return { result: null, error: 'Result cannot be serialized to JSON' };
-      }
-
-      return { result, error: null };
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      return { result: null, error: errorMsg };
-    }
-  };
+    };
+  }, [filterExpr]);
 
   const filteredResult = mode === 'preview' && isComplex ? getFilteredValue(selectedValue) : { result: selectedValue, error: null };
   const displayValue = filteredResult.error ? selectedValue : filteredResult.result;

@@ -46,6 +46,17 @@ export function getValueAtPath(root: JsonValue, path: (string | number)[]): Json
   return current;
 }
 
+// Efficient deep clone that only clones what's necessary
+function deepClone(value: JsonValue): JsonValue {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(deepClone);
+  const result: JsonObject = {};
+  for (const key of Object.keys(value)) {
+    result[key] = deepClone(value[key]);
+  }
+  return result;
+}
+
 export function setValueAtPath(
   root: JsonValue,
   path: (string | number)[],
@@ -53,7 +64,7 @@ export function setValueAtPath(
 ): JsonValue {
   if (path.length === 0) return newValue;
 
-  const newRoot = JSON.parse(JSON.stringify(root)) as JsonObject | JsonArray;
+  const newRoot = deepClone(root) as JsonObject | JsonArray;
   let current: JsonObject | JsonArray = newRoot;
 
   for (let i = 0; i < path.length - 1; i++) {
@@ -101,7 +112,7 @@ export function insertArrayItem(
     return arr;
   }
 
-  const newRoot = JSON.parse(JSON.stringify(root)) as JsonObject | JsonArray;
+  const newRoot = deepClone(root) as JsonObject | JsonArray;
   let current: JsonObject | JsonArray = newRoot;
 
   for (let i = 0; i < path.length - 1; i++) {
@@ -145,7 +156,7 @@ export function removeArrayItem(
     return arr;
   }
 
-  const newRoot = JSON.parse(JSON.stringify(root)) as JsonObject | JsonArray;
+  const newRoot = deepClone(root) as JsonObject | JsonArray;
   let current: JsonObject | JsonArray = newRoot;
 
   for (let i = 0; i < path.length - 1; i++) {
@@ -190,7 +201,7 @@ export function addObjectProperty(
     return obj;
   }
 
-  const newRoot = JSON.parse(JSON.stringify(root)) as JsonObject | JsonArray;
+  const newRoot = deepClone(root) as JsonObject | JsonArray;
   let current: JsonObject | JsonArray = newRoot;
 
   for (let i = 0; i < path.length - 1; i++) {
@@ -234,7 +245,7 @@ export function removeObjectProperty(
     return obj;
   }
 
-  const newRoot = JSON.parse(JSON.stringify(root)) as JsonObject | JsonArray;
+  const newRoot = deepClone(root) as JsonObject | JsonArray;
   let current: JsonObject | JsonArray = newRoot;
 
   for (let i = 0; i < path.length - 1; i++) {
