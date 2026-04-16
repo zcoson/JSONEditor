@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import type { JsonValue } from '../utils/jsonUtils';
-import { parseJson, formatJson, setValueAtPath } from '../utils/jsonUtils';
+import { parseJson, formatJson, setValueAtPath, insertArrayItem, removeArrayItem } from '../utils/jsonUtils';
 
 export interface UseJsonStateReturn {
   rawContent: string;

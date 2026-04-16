@@ -87,3 +87,92 @@ export function compressJson(content: string): string {
     return content.replace(/\s+/g, '');
   }
 }
+
+export function insertArrayItem(
+  root: JsonValue,
+  path: (string | number)[],
+  index: number,
+  newItem: JsonValue
+): JsonValue {
+  if (path.length === 0) {
+    // Inserting into root array
+    const arr = Array.isArray(root) ? [...root] : [];
+    arr.splice(index, 0, newItem);
+    return arr;
+  }
+
+  const newRoot = JSON.parse(JSON.stringify(root)) as JsonObject | JsonArray;
+  let current: JsonObject | JsonArray = newRoot;
+
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    if (Array.isArray(current)) {
+      current = current[key as number] as JsonObject | JsonArray;
+    } else {
+      current = (current as JsonObject)[key as string] as JsonObject | JsonArray;
+    }
+  }
+
+  const lastKey = path[path.length - 1];
+  let targetArray: JsonValue[];
+  if (Array.isArray(current)) {
+    targetArray = current[lastKey as number] as JsonValue[];
+  } else {
+    targetArray = (current as JsonObject)[lastKey as string] as JsonValue[];
+  }
+
+  const newArr = [...targetArray];
+  newArr.splice(index, 0, newItem);
+
+  if (Array.isArray(current)) {
+    current[lastKey as number] = newArr;
+  } else {
+    (current as JsonObject)[lastKey as string] = newArr;
+  }
+
+  return newRoot;
+}
+
+export function removeArrayItem(
+  root: JsonValue,
+  path: (string | number)[],
+  index: number
+): JsonValue {
+  if (path.length === 0) {
+    // Removing from root array
+    const arr = Array.isArray(root) ? [...root] : [];
+    arr.splice(index, 1);
+    return arr;
+  }
+
+  const newRoot = JSON.parse(JSON.stringify(root)) as JsonObject | JsonArray;
+  let current: JsonObject | JsonArray = newRoot;
+
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    if (Array.isArray(current)) {
+      current = current[key as number] as JsonObject | JsonArray;
+    } else {
+      current = (current as JsonObject)[key as string] as JsonObject | JsonArray;
+    }
+  }
+
+  const lastKey = path[path.length - 1];
+  let targetArray: JsonValue[];
+  if (Array.isArray(current)) {
+    targetArray = current[lastKey as number] as JsonValue[];
+  } else {
+    targetArray = (current as JsonObject)[lastKey as string] as JsonValue[];
+  }
+
+  const newArr = [...targetArray];
+  newArr.splice(index, 1);
+
+  if (Array.isArray(current)) {
+    current[lastKey as number] = newArr;
+  } else {
+    (current as JsonObject)[lastKey as string] = newArr;
+  }
+
+  return newRoot;
+}

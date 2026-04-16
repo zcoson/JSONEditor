@@ -1,7 +1,7 @@
 use std::fs;
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, RunEvent, menu::{Menu, MenuItem, Submenu, PredefinedMenuItem, AboutMetadata, IsMenuItem}};
+use tauri::{Emitter, menu::{Menu, MenuItem, Submenu, PredefinedMenuItem, AboutMetadata, IsMenuItem}};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileInfo {
@@ -38,10 +38,6 @@ fn compress_json(content: String) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Store pending file paths to open when window is ready
-    let pending_files: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let pending_files_setup = pending_files.clone();
-
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -192,20 +188,6 @@ pub fn run() {
                 }
             });
 
-            // Check if there are pending files from the initial open event
-            if let Ok(files) = pending_files_setup.lock() {
-                for path in files.iter() {
-                    log::info!("Setup: sending file-opened for {}", path);
-                    // Emit to frontend after a short delay to ensure window is ready
-                    let path_clone = path.clone();
-                    let handle = app_handle.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(500));
-                        let _ = handle.emit("file-opened", path_clone);
-                    });
-                }
-            }
-
             if cfg!(debug_assertions) {
                 app_handle.plugin(
                     tauri_plugin_log::Builder::default()
@@ -218,26 +200,5 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(move |app_handle, event| {
-        // Handle file open events (double-click to open)
-        if let RunEvent::Opened { urls } = event {
-            log::info!("RunEvent::Opened received with {} urls", urls.len());
-            for url in urls {
-                log::info!("URL: {}", url);
-                // Convert file:// URL to file path
-                if url.scheme() == "file" {
-                    if let Ok(path) = url.to_file_path() {
-                        let path_str = path.to_string_lossy().to_string();
-                        log::info!("File path: {}", path_str);
-
-                        // Store pending file and emit to frontend
-                        if let Ok(mut files) = pending_files.lock() {
-                            files.push(path_str.clone());
-                        }
-                        let _ = app_handle.emit("file-opened", path_str);
-                    }
-                }
-            }
-        }
-    });
+    app.run(|_, _| {});
 }
