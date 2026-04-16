@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useJsonState } from './hooks/useJsonState';
 import { JsonTree } from './components/JsonTree';
 import { EditorPanel } from './components/EditorPanel';
@@ -26,6 +27,10 @@ function App() {
     filePath,
     setSelectedPath,
     updateValue,
+    insertItem,
+    removeItem,
+    addProperty,
+    removeProperty,
     loadJson,
     clear,
     reset,
@@ -38,6 +43,27 @@ function App() {
   useEffect(() => {
     document.documentElement.style.setProperty('--font-size', `${fontSize}px`);
   }, [fontSize]);
+
+  // Update window title when file path changes
+  useEffect(() => {
+    const updateTitle = async () => {
+      try {
+        const window = getCurrentWindow();
+        if (filePath) {
+          // Extract just the filename from the path
+          const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
+          console.log('Setting window title to:', fileName);
+          await window.setTitle(fileName);
+        } else {
+          console.log('Setting window title to: JSON Editor');
+          await window.setTitle('JSON Editor');
+        }
+      } catch (err) {
+        console.error('Failed to update window title:', err);
+      }
+    };
+    updateTitle();
+  }, [filePath]);
 
   // Listen for file drop events from Tauri
   useEffect(() => {
@@ -335,10 +361,18 @@ function App() {
   const columnsRef = useRef(columns);
   const selectedPathRef = useRef(selectedPath);
   const updateValueRef = useRef(updateValue);
+  const insertItemRef = useRef(insertItem);
+  const removeItemRef = useRef(removeItem);
+  const addPropertyRef = useRef(addProperty);
+  const removePropertyRef = useRef(removeProperty);
 
   columnsRef.current = columns;
   selectedPathRef.current = selectedPath;
   updateValueRef.current = updateValue;
+  insertItemRef.current = insertItem;
+  removeItemRef.current = removeItem;
+  addPropertyRef.current = addProperty;
+  removePropertyRef.current = removeProperty;
 
   // Update value in a specific column - stable callback
   const handleUpdate = useCallback((columnIndex: number, path: (string | number)[], newValue: JsonValue) => {
@@ -404,6 +438,254 @@ function App() {
     }
   }, []);
 
+  // Insert item in array - stable callback
+  const handleInsert = useCallback((columnIndex: number, path: (string | number)[], index: number, newItem: JsonValue) => {
+    const cols = columnsRef.current;
+    const selPath = selectedPathRef.current;
+    const nestPaths = nestedPathsRef.current;
+    const insert = insertItemRef.current;
+    const updateVal = updateValueRef.current;
+
+    isEditingRef.current = true;
+
+    if (columnIndex === 0) {
+      insert(path, index, newItem);
+    } else {
+      const column = cols[columnIndex];
+      if (!column?.value) return;
+
+      // Get the array to insert into
+      const arr = path.length === 0 ? column.value : getValueAtPath(column.value, path);
+      if (!Array.isArray(arr)) return;
+
+      const newArr = [...arr];
+      newArr.splice(index, 0, newItem);
+
+      const updated = path.length === 0
+        ? newArr
+        : setValueAtPath(column.value, path, newArr);
+
+      const updateChain: { index: number; value: JsonValue }[] = [{ index: columnIndex, value: updated }];
+      let currentStringValue = JSON.stringify(updated);
+      let currentColumnIndex = columnIndex;
+
+      while (currentColumnIndex > 0) {
+        currentColumnIndex--;
+
+        if (currentColumnIndex === 0) {
+          updateChain.push({ index: 0, value: setValueAtPath(cols[0].value!, selPath, currentStringValue) });
+          updateVal(selPath, currentStringValue);
+        } else {
+          const parentPath = nestPaths[currentColumnIndex - 1] || [];
+          const parentColumn = cols[currentColumnIndex];
+          if (!parentColumn?.value) break;
+
+          const parentUpdated = parentPath.length === 0
+            ? currentStringValue
+            : setValueAtPath(parentColumn.value, parentPath, currentStringValue);
+
+          updateChain.push({ index: currentColumnIndex, value: parentUpdated });
+          currentStringValue = JSON.stringify(parentUpdated);
+        }
+      }
+
+      setColumns(prev => {
+        const newColumns = [...prev];
+        for (const { index, value } of updateChain) {
+          if (newColumns[index]) {
+            newColumns[index] = { ...newColumns[index], value };
+          }
+        }
+        return newColumns;
+      });
+    }
+  }, []);
+
+  // Remove item from array - stable callback
+  const handleRemove = useCallback((columnIndex: number, path: (string | number)[], index: number) => {
+    const cols = columnsRef.current;
+    const selPath = selectedPathRef.current;
+    const nestPaths = nestedPathsRef.current;
+    const remove = removeItemRef.current;
+    const updateVal = updateValueRef.current;
+
+    isEditingRef.current = true;
+
+    if (columnIndex === 0) {
+      remove(path, index);
+    } else {
+      const column = cols[columnIndex];
+      if (!column?.value) return;
+
+      const arr = path.length === 0 ? column.value : getValueAtPath(column.value, path);
+      if (!Array.isArray(arr)) return;
+
+      const newArr = [...arr];
+      newArr.splice(index, 1);
+
+      const updated = path.length === 0
+        ? newArr
+        : setValueAtPath(column.value, path, newArr);
+
+      const updateChain: { index: number; value: JsonValue }[] = [{ index: columnIndex, value: updated }];
+      let currentStringValue = JSON.stringify(updated);
+      let currentColumnIndex = columnIndex;
+
+      while (currentColumnIndex > 0) {
+        currentColumnIndex--;
+
+        if (currentColumnIndex === 0) {
+          updateChain.push({ index: 0, value: setValueAtPath(cols[0].value!, selPath, currentStringValue) });
+          updateVal(selPath, currentStringValue);
+        } else {
+          const parentPath = nestPaths[currentColumnIndex - 1] || [];
+          const parentColumn = cols[currentColumnIndex];
+          if (!parentColumn?.value) break;
+
+          const parentUpdated = parentPath.length === 0
+            ? currentStringValue
+            : setValueAtPath(parentColumn.value, parentPath, currentStringValue);
+
+          updateChain.push({ index: currentColumnIndex, value: parentUpdated });
+          currentStringValue = JSON.stringify(parentUpdated);
+        }
+      }
+
+      setColumns(prev => {
+        const newColumns = [...prev];
+        for (const { index, value } of updateChain) {
+          if (newColumns[index]) {
+            newColumns[index] = { ...newColumns[index], value };
+          }
+        }
+        return newColumns;
+      });
+    }
+  }, []);
+
+  // Add property to object - stable callback
+  const handleAddProperty = useCallback((columnIndex: number, path: (string | number)[], key: string, value: JsonValue) => {
+    const cols = columnsRef.current;
+    const selPath = selectedPathRef.current;
+    const nestPaths = nestedPathsRef.current;
+    const add = addPropertyRef.current;
+    const updateVal = updateValueRef.current;
+
+    isEditingRef.current = true;
+
+    if (columnIndex === 0) {
+      add(path, key, value);
+    } else {
+      const column = cols[columnIndex];
+      if (!column?.value) return;
+
+      const obj = path.length === 0 ? column.value : getValueAtPath(column.value, path);
+      if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return;
+
+      const newObj = { ...obj, [key]: value };
+
+      const updated = path.length === 0
+        ? newObj
+        : setValueAtPath(column.value, path, newObj);
+
+      const updateChain: { index: number; value: JsonValue }[] = [{ index: columnIndex, value: updated }];
+      let currentStringValue = JSON.stringify(updated);
+      let currentColumnIndex = columnIndex;
+
+      while (currentColumnIndex > 0) {
+        currentColumnIndex--;
+
+        if (currentColumnIndex === 0) {
+          updateChain.push({ index: 0, value: setValueAtPath(cols[0].value!, selPath, currentStringValue) });
+          updateVal(selPath, currentStringValue);
+        } else {
+          const parentPath = nestPaths[currentColumnIndex - 1] || [];
+          const parentColumn = cols[currentColumnIndex];
+          if (!parentColumn?.value) break;
+
+          const parentUpdated = parentPath.length === 0
+            ? currentStringValue
+            : setValueAtPath(parentColumn.value, parentPath, currentStringValue);
+
+          updateChain.push({ index: currentColumnIndex, value: parentUpdated });
+          currentStringValue = JSON.stringify(parentUpdated);
+        }
+      }
+
+      setColumns(prev => {
+        const newColumns = [...prev];
+        for (const { index, value } of updateChain) {
+          if (newColumns[index]) {
+            newColumns[index] = { ...newColumns[index], value };
+          }
+        }
+        return newColumns;
+      });
+    }
+  }, []);
+
+  // Remove property from object - stable callback
+  const handleRemoveProperty = useCallback((columnIndex: number, path: (string | number)[], key: string) => {
+    const cols = columnsRef.current;
+    const selPath = selectedPathRef.current;
+    const nestPaths = nestedPathsRef.current;
+    const remove = removePropertyRef.current;
+    const updateVal = updateValueRef.current;
+
+    isEditingRef.current = true;
+
+    if (columnIndex === 0) {
+      remove(path, key);
+    } else {
+      const column = cols[columnIndex];
+      if (!column?.value) return;
+
+      const obj = path.length === 0 ? column.value : getValueAtPath(column.value, path);
+      if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return;
+
+      const newObj = { ...obj };
+      delete newObj[key];
+
+      const updated = path.length === 0
+        ? newObj
+        : setValueAtPath(column.value, path, newObj);
+
+      const updateChain: { index: number; value: JsonValue }[] = [{ index: columnIndex, value: updated }];
+      let currentStringValue = JSON.stringify(updated);
+      let currentColumnIndex = columnIndex;
+
+      while (currentColumnIndex > 0) {
+        currentColumnIndex--;
+
+        if (currentColumnIndex === 0) {
+          updateChain.push({ index: 0, value: setValueAtPath(cols[0].value!, selPath, currentStringValue) });
+          updateVal(selPath, currentStringValue);
+        } else {
+          const parentPath = nestPaths[currentColumnIndex - 1] || [];
+          const parentColumn = cols[currentColumnIndex];
+          if (!parentColumn?.value) break;
+
+          const parentUpdated = parentPath.length === 0
+            ? currentStringValue
+            : setValueAtPath(parentColumn.value, parentPath, currentStringValue);
+
+          updateChain.push({ index: currentColumnIndex, value: parentUpdated });
+          currentStringValue = JSON.stringify(parentUpdated);
+        }
+      }
+
+      setColumns(prev => {
+        const newColumns = [...prev];
+        for (const { index, value } of updateChain) {
+          if (newColumns[index]) {
+            newColumns[index] = { ...newColumns[index], value };
+          }
+        }
+        return newColumns;
+      });
+    }
+  }, []);
+
   // Build panels
   const panels = useMemo(() => {
     return columns.map((column, index) => {
@@ -442,6 +724,10 @@ function App() {
           rootValue={lastColumnValue}
           selectedPath={editPath}
           onUpdate={(path, newValue) => handleUpdate(lastColumnIndex, path, newValue)}
+          onInsert={(path, index, newItem) => handleInsert(lastColumnIndex, path, index, newItem)}
+          onRemove={(path, index) => handleRemove(lastColumnIndex, path, index)}
+          onAddProperty={(path, key, value) => handleAddProperty(lastColumnIndex, path, key, value)}
+          onRemoveProperty={(path, key) => handleRemoveProperty(lastColumnIndex, path, key)}
           fontSize={fontSize}
         />
       </div>

@@ -176,3 +176,92 @@ export function removeArrayItem(
 
   return newRoot;
 }
+
+export function addObjectProperty(
+  root: JsonValue,
+  path: (string | number)[],
+  key: string,
+  value: JsonValue
+): JsonValue {
+  if (path.length === 0) {
+    // Adding to root object
+    const obj = typeof root === 'object' && root !== null && !Array.isArray(root) ? { ...root } : {};
+    (obj as JsonObject)[key] = value;
+    return obj;
+  }
+
+  const newRoot = JSON.parse(JSON.stringify(root)) as JsonObject | JsonArray;
+  let current: JsonObject | JsonArray = newRoot;
+
+  for (let i = 0; i < path.length - 1; i++) {
+    const k = path[i];
+    if (Array.isArray(current)) {
+      current = current[k as number] as JsonObject | JsonArray;
+    } else {
+      current = (current as JsonObject)[k as string] as JsonObject | JsonArray;
+    }
+  }
+
+  const lastKey = path[path.length - 1];
+  let targetObj: JsonObject;
+  if (Array.isArray(current)) {
+    targetObj = current[lastKey as number] as JsonObject;
+  } else {
+    targetObj = (current as JsonObject)[lastKey as string] as JsonObject;
+  }
+
+  const newObj = { ...targetObj };
+  newObj[key] = value;
+
+  if (Array.isArray(current)) {
+    current[lastKey as number] = newObj;
+  } else {
+    (current as JsonObject)[lastKey as string] = newObj;
+  }
+
+  return newRoot;
+}
+
+export function removeObjectProperty(
+  root: JsonValue,
+  path: (string | number)[],
+  key: string
+): JsonValue {
+  if (path.length === 0) {
+    // Removing from root object
+    const obj = typeof root === 'object' && root !== null && !Array.isArray(root) ? { ...root } : {};
+    delete (obj as JsonObject)[key];
+    return obj;
+  }
+
+  const newRoot = JSON.parse(JSON.stringify(root)) as JsonObject | JsonArray;
+  let current: JsonObject | JsonArray = newRoot;
+
+  for (let i = 0; i < path.length - 1; i++) {
+    const k = path[i];
+    if (Array.isArray(current)) {
+      current = current[k as number] as JsonObject | JsonArray;
+    } else {
+      current = (current as JsonObject)[k as string] as JsonObject | JsonArray;
+    }
+  }
+
+  const lastKey = path[path.length - 1];
+  let targetObj: JsonObject;
+  if (Array.isArray(current)) {
+    targetObj = current[lastKey as number] as JsonObject;
+  } else {
+    targetObj = (current as JsonObject)[lastKey as string] as JsonObject;
+  }
+
+  const newObj = { ...targetObj };
+  delete newObj[key];
+
+  if (Array.isArray(current)) {
+    current[lastKey as number] = newObj;
+  } else {
+    (current as JsonObject)[lastKey as string] = newObj;
+  }
+
+  return newRoot;
+}

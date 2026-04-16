@@ -62,6 +62,10 @@ interface EditorPanelProps {
   rootValue: JsonValue | null;
   selectedPath: (string | number)[];
   onUpdate: (path: (string | number)[], newValue: JsonValue) => void;
+  onInsert: (path: (string | number)[], index: number, newItem: JsonValue) => void;
+  onRemove: (path: (string | number)[], index: number) => void;
+  onAddProperty: (path: (string | number)[], key: string, value: JsonValue) => void;
+  onRemoveProperty: (path: (string | number)[], key: string) => void;
   fontSize?: number;
 }
 
@@ -69,6 +73,8 @@ interface ObjectEditorProps {
   value: Record<string, JsonValue>;
   path: (string | number)[];
   onUpdate: (path: (string | number)[], newValue: JsonValue) => void;
+  onAddProperty: (path: (string | number)[], key: string, value: JsonValue) => void;
+  onRemoveProperty: (path: (string | number)[], key: string) => void;
   fontSize?: number;
 }
 
@@ -76,6 +82,8 @@ interface ArrayEditorProps {
   value: JsonValue[];
   path: (string | number)[];
   onUpdate: (path: (string | number)[], newValue: JsonValue) => void;
+  onInsert: (path: (string | number)[], index: number, newItem: JsonValue) => void;
+  onRemove: (path: (string | number)[], index: number) => void;
   fontSize?: number;
 }
 
@@ -174,50 +182,74 @@ function ValueEditor({
   );
 }
 
-function ObjectEditor({ value, path, onUpdate, fontSize }: ObjectEditorProps) {
+function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, fontSize }: ObjectEditorProps) {
   const entries = Object.entries(value);
+  const [newKey, setNewKey] = useState('');
 
-  if (entries.length === 0) {
-    return <div className="text-gray-400 italic">Empty object</div>;
-  }
+  const handleAdd = () => {
+    if (newKey.trim() && !(newKey.trim() in value)) {
+      onAddProperty(path, newKey.trim(), null);
+      setNewKey('');
+    }
+  };
 
   return (
     <div className="space-y-1 overflow-x-auto max-w-full">
-      {entries.map(([key, val]) => (
-        <div key={key} className="flex items-center gap-1 min-w-0">
-          <span className="font-medium text-blue-600 w-28 truncate flex-shrink-0">
-            {key}
-          </span>
-          <span className="text-gray-500">:</span>
-          <div className="flex-1 min-w-0">
-            <ValueEditor
-              value={val}
-              path={[...path, key]}
-              onUpdate={onUpdate}
-              fontSize={fontSize}
-            />
+      {entries.length === 0 ? (
+        <div className="text-gray-400 italic mb-1">Empty object</div>
+      ) : (
+        entries.map(([key, val]) => (
+          <div key={key} className="flex items-center gap-1 min-w-0">
+            <span className="font-medium text-blue-600 w-28 truncate flex-shrink-0">
+              {key}
+            </span>
+            <span className="text-gray-500">:</span>
+            <div className="flex-1 min-w-0">
+              <ValueEditor
+                value={val}
+                path={[...path, key]}
+                onUpdate={onUpdate}
+                fontSize={fontSize}
+              />
+            </div>
+            <button
+              onClick={() => onRemoveProperty(path, key)}
+              className="px-1.5 py-0.5 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded flex-shrink-0"
+              title="删除属性"
+            >
+              −
+            </button>
           </div>
-          <button
-            onClick={() => onUpdate([...path, key], null)}
-            className="px-1 py-0.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded flex-shrink-0"
-            style={{ fontSize: '1.5em' }}
-            title="Set to null"
-          >
-            ⊘
-          </button>
-        </div>
-      ))}
+        ))
+      )}
+      <div className="flex items-center gap-1 mt-1 pt-1 border-t border-gray-200">
+        <input
+          type="text"
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleAdd();
+            }
+          }}
+          placeholder="新属性名"
+          className="px-1.5 py-0.5 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 w-28"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={!newKey.trim() || newKey.trim() in value}
+          className="px-2 py-0.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          + 添加属性
+        </button>
+      </div>
     </div>
   );
 }
 
-function ArrayEditor({ value, path, onUpdate, fontSize }: ArrayEditorProps) {
-  if (value.length === 0) {
-    return <div className="text-gray-400 italic">Empty array</div>;
-  }
-
+function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: ArrayEditorProps) {
   // Check if all items are objects with same keys for table view
-  const isTableMode = value.every(
+  const isTableMode = value.length > 0 && value.every(
     (item) => typeof item === 'object' && item !== null && !Array.isArray(item)
   );
 
@@ -230,6 +262,13 @@ function ArrayEditor({ value, path, onUpdate, fontSize }: ArrayEditorProps) {
     });
     const keys = Array.from(allKeys);
 
+    // Create empty object with all keys
+    const createEmptyItem = (): Record<string, JsonValue> => {
+      const item: Record<string, JsonValue> = {};
+      keys.forEach(k => item[k] = null);
+      return item;
+    };
+
     return (
       <div className="overflow-auto max-w-full">
         <table className="border-collapse" style={{ minWidth: 'max-content' }}>
@@ -241,6 +280,7 @@ function ArrayEditor({ value, path, onUpdate, fontSize }: ArrayEditorProps) {
                   {key}
                 </th>
               ))}
+              <th className="border-b border-gray-300 px-1 py-0.5 text-left font-medium whitespace-nowrap">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -257,10 +297,34 @@ function ArrayEditor({ value, path, onUpdate, fontSize }: ArrayEditorProps) {
                     />
                   </td>
                 ))}
+                <td className="border-b border-gray-300 px-1 py-0.5 whitespace-nowrap">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => onInsert(path, index + 1, createEmptyItem())}
+                      className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded"
+                      title="在下方插入行"
+                    >
+                      +
+                    </button>
+                    <button
+                      onClick={() => onRemove(path, index)}
+                      className="px-1.5 py-0.5 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded"
+                      title="删除此行"
+                    >
+                      −
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        <button
+          onClick={() => onInsert(path, value.length, createEmptyItem())}
+          className="mt-1 px-2 py-0.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded"
+        >
+          + 添加行
+        </button>
       </div>
     );
   }
@@ -272,14 +336,15 @@ function ArrayEditor({ value, path, onUpdate, fontSize }: ArrayEditorProps) {
         <thead>
           <tr className="bg-gray-100">
             <th className="border-b border-r border-gray-300 px-1 py-0.5 text-left font-medium whitespace-nowrap">#</th>
-            <th className="border-b border-gray-300 px-1 py-0.5 text-left font-medium whitespace-nowrap">Value</th>
+            <th className="border-b border-r border-gray-300 px-1 py-0.5 text-left font-medium whitespace-nowrap">Value</th>
+            <th className="border-b border-gray-300 px-1 py-0.5 text-left font-medium whitespace-nowrap">操作</th>
           </tr>
         </thead>
         <tbody>
           {value.map((item, index) => (
             <tr key={index} className="hover:bg-gray-50">
               <td className="border-b border-r border-gray-300 px-1 py-0.5 text-gray-500 whitespace-nowrap">{index}</td>
-              <td className="border-b border-gray-300 px-1 py-0.5 min-w-0">
+              <td className="border-b border-r border-gray-300 px-1 py-0.5 min-w-0">
                 <ValueEditor
                   value={item}
                   path={[...path, index]}
@@ -287,15 +352,39 @@ function ArrayEditor({ value, path, onUpdate, fontSize }: ArrayEditorProps) {
                   fontSize={fontSize}
                 />
               </td>
+              <td className="border-b border-gray-300 px-1 py-0.5 whitespace-nowrap">
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => onInsert(path, index + 1, null)}
+                    className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded"
+                    title="在下方插入项"
+                  >
+                    +
+                  </button>
+                  <button
+                    onClick={() => onRemove(path, index)}
+                    className="px-1.5 py-0.5 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded"
+                    title="删除此项"
+                  >
+                    −
+                  </button>
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <button
+        onClick={() => onInsert(path, value.length, null)}
+        className="mt-1 px-2 py-0.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded"
+      >
+        + 添加项
+      </button>
     </div>
   );
 }
 
-export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, onUpdate, fontSize = 14 }: EditorPanelProps) {
+export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, onUpdate, onInsert, onRemove, onAddProperty, onRemoveProperty, fontSize = 14 }: EditorPanelProps) {
   const [mode, setMode] = useState<'edit' | 'preview'>(lastEditorMode);
   const [copied, setCopied] = useState<'none' | 'copy' | 'compress'>('none');
   const [filterExpr, setFilterExpr] = useState('');
@@ -524,6 +613,8 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
                 value={selectedValue as Record<string, JsonValue>}
                 path={selectedPath}
                 onUpdate={onUpdate}
+                onAddProperty={onAddProperty}
+                onRemoveProperty={onRemoveProperty}
                 fontSize={fontSize}
               />
             )}
@@ -532,6 +623,8 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
                 value={selectedValue as JsonValue[]}
                 path={selectedPath}
                 onUpdate={onUpdate}
+                onInsert={onInsert}
+                onRemove={onRemove}
                 fontSize={fontSize}
               />
             )}
