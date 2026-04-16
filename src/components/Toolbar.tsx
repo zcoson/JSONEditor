@@ -17,7 +17,7 @@ interface ToolbarProps {
   onFontSizeChange: (size: number) => void;
 }
 
-export function Toolbar({ rawContent, onLoadJson, onClear, onReset, onUndo, canUndo, hasOriginal, layout, onLayoutChange, fontSize, onFontSizeChange }: ToolbarProps) {
+export function Toolbar({ rawContent, filePath, onLoadJson, onClear, onReset, onUndo, canUndo, hasOriginal, layout, onLayoutChange, fontSize, onFontSizeChange }: ToolbarProps) {
   const [copied, setCopied] = useState<'none' | 'compress' | 'copy'>('none');
   const handlePaste = async () => {
     try {
@@ -107,7 +107,13 @@ export function Toolbar({ rawContent, onLoadJson, onClear, onReset, onUndo, canU
       >
         {copied === 'copy' ? 'Copied' : 'Copy'}
       </button>
-      <div className="flex-1" />
+      <div className="flex-1 flex items-center justify-center">
+        {filePath && (
+          <span className="text-xs text-gray-500 truncate max-w-md" title={filePath}>
+            {filePath}
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-1">
         <button
           onClick={handleZoomOut}
