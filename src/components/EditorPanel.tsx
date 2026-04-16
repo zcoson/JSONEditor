@@ -590,7 +590,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-white" style={{ fontSize: `${fontSize}px` }}>
-      <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white gap-2">
+      <div className="flex items-center justify-between px-3 py-1 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white gap-2">
         <div className="flex items-center gap-2 text-slate-600 truncate flex-1">
           <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -642,7 +642,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
         </div>
       </div>
       {mode === 'preview' && isComplex && (
-        <div className="px-3 py-2 border-b border-slate-200 bg-slate-50">
+        <div className="px-3 py-1 border-b border-slate-200 bg-slate-50">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500 font-medium flex-shrink-0">Filter:</span>
             <input
