@@ -518,7 +518,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
 
   const handleCopy = async (value: JsonValue) => {
     try {
-      const content = JSON.stringify(value, null, 2);
+      const content = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
       await writeText(content);
       setCopied('copy');
       setTimeout(() => setCopied('none'), 1500);
@@ -529,7 +529,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
 
   const handleCopyCompressed = async (value: JsonValue) => {
     try {
-      const content = JSON.stringify(value);
+      const content = typeof value === 'string' ? value : JSON.stringify(value);
       await writeText(content);
       setCopied('compress');
       setTimeout(() => setCopied('none'), 1500);
