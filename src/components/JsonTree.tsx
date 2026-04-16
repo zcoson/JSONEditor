@@ -100,23 +100,33 @@ function TreeNode({
   return (
     <div className="select-none">
       <div
-        className={`flex items-center py-0.5 px-1 hover:bg-gray-100 cursor-pointer whitespace-nowrap ${
-          isSelected ? 'bg-blue-100' : ''
+        className={`flex items-center py-1 px-2 rounded-md cursor-pointer whitespace-nowrap transition-colors ${
+          isSelected
+            ? 'bg-blue-50 border border-blue-200'
+            : 'hover:bg-slate-50'
         }`}
-        style={{ paddingLeft: depth * 12 + 4 }}
+        style={{ paddingLeft: depth * 16 + 8 }}
         onClick={handleClick}
       >
         {isExpandable && (
           <span
-            className="w-3 h-3 flex-shrink-0 flex items-center justify-center text-gray-500 mr-0.5 cursor-pointer hover:bg-gray-200 rounded"
+            className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 mr-1 cursor-pointer hover:bg-slate-200 rounded transition-colors"
             onClick={handleToggle}
           >
-            {isExpanded ? '▼' : '▶'}
+            {isExpanded ? (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            ) : (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            )}
           </span>
         )}
-        {!isExpandable && <span className="w-3 flex-shrink-0 mr-0.5" />}
-        <span className="font-medium text-blue-600 truncate">{nodeKey}</span>
-        <span className="text-gray-500 mx-0.5 flex-shrink-0">:</span>
+        {!isExpandable && <span className="w-4 flex-shrink-0 mr-1" />}
+        <span className="font-semibold text-blue-600 truncate">{nodeKey}</span>
+        <span className="text-slate-400 mx-1 flex-shrink-0">:</span>
         <span
           className={`truncate ${
             type === 'string'
@@ -124,10 +134,10 @@ function TreeNode({
               : type === 'number'
               ? 'text-purple-600'
               : type === 'boolean'
-              ? 'text-orange-600'
+              ? 'text-rose-600'
               : type === 'null'
-              ? 'text-gray-400'
-              : 'text-gray-600'
+              ? 'text-slate-400 italic'
+              : 'text-slate-500'
           }`}
         >
           {getValuePreview()}
@@ -185,8 +195,12 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
 
   if (value === null) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400">
-        No JSON loaded
+      <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+        <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <span className="text-sm">No JSON loaded</span>
+        <span className="text-xs text-slate-300">Paste or drop a JSON file to begin</span>
       </div>
     );
   }
@@ -196,8 +210,8 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
       className="font-mono overflow-auto h-full"
       style={{
         minWidth: 'max-content',
-        fontSize: '14px',
-        lineHeight: 1.5,
+        fontSize: '13px',
+        lineHeight: 1.6,
       }}
     >
       <TreeNode

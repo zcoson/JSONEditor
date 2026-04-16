@@ -1,5 +1,4 @@
 use std::fs;
-use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, menu::{Menu, MenuItem, Submenu, PredefinedMenuItem, AboutMetadata, IsMenuItem}};
 
@@ -67,9 +66,9 @@ pub fn run() {
                 ..Default::default()
             };
 
-            // Create Open and Save menu items
-            let open_item = MenuItem::with_id(app_handle, "open", "Open", true, None::<&str>)?;
-            let save_item = MenuItem::with_id(app_handle, "save", "Save", true, None::<&str>)?;
+            // Create Open and Save menu items with keyboard shortcuts
+            let open_item = MenuItem::with_id(app_handle, "open", "Open...", true, Some("CommandOrControl+O"))?;
+            let save_item = MenuItem::with_id(app_handle, "save", "Save", true, Some("CommandOrControl+S"))?;
 
             // Create empty menu
             let menu = Menu::new(app_handle)?;
