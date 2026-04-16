@@ -92,11 +92,13 @@ function ValueEditor({
   path,
   onUpdate,
   fontSize,
+  singleValueRef,
 }: {
   value: JsonValue;
   path: (string | number)[];
   onUpdate: (path: (string | number)[], newValue: JsonValue) => void;
   fontSize?: number;
+  singleValueRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
 }) {
   const type = getValueType(value);
   const strValue = String(value);
@@ -165,6 +167,7 @@ function ValueEditor({
   if (type === 'string') {
     return (
       <AutoResizeTextarea
+        ref={singleValueRef as React.RefObject<HTMLTextAreaElement>}
         value={strValue}
         onChange={(newValue) => onUpdate(path, newValue)}
         fontSize={fontSize}
@@ -174,6 +177,7 @@ function ValueEditor({
 
   return (
     <input
+      ref={singleValueRef as React.RefObject<HTMLInputElement>}
       type="number"
       value={strValue}
       onChange={handleChange}
@@ -194,16 +198,16 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
   };
 
   return (
-    <div className="space-y-1 overflow-x-auto max-w-full">
+    <div className="space-y-2 overflow-x-auto max-w-full">
       {entries.length === 0 ? (
-        <div className="text-gray-400 italic mb-1">Empty object</div>
+        <div className="text-slate-400 italic text-sm py-4 text-center">Empty object</div>
       ) : (
         entries.map(([key, val]) => (
-          <div key={key} className="flex items-center gap-1 min-w-0">
-            <span className="font-medium text-blue-600 w-28 truncate flex-shrink-0">
+          <div key={key} className="flex items-center gap-2 min-w-0 group">
+            <span className="font-semibold text-blue-600 w-32 truncate flex-shrink-0 text-sm">
               {key}
             </span>
-            <span className="text-gray-500">:</span>
+            <span className="text-slate-400">:</span>
             <div className="flex-1 min-w-0">
               <ValueEditor
                 value={val}
@@ -214,15 +218,17 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
             </div>
             <button
               onClick={() => onRemoveProperty(path, key)}
-              className="px-1.5 py-0.5 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded flex-shrink-0"
-              title="删除属性"
+              className="btn btn-danger"
+              title="Delete property"
             >
-              −
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
             </button>
           </div>
         ))
       )}
-      <div className="flex items-center gap-1 mt-1 pt-1 border-t border-gray-200">
+      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200">
         <input
           type="text"
           value={newKey}
@@ -232,15 +238,18 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
               handleAdd();
             }
           }}
-          placeholder="新属性名"
-          className="px-1.5 py-0.5 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 w-28"
+          placeholder="New property name"
+          className="input w-32"
         />
         <button
           onClick={handleAdd}
           disabled={!newKey.trim() || newKey.trim() in value}
-          className="px-2 py-0.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn btn-success"
         >
-          + 添加属性
+          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Property
         </button>
       </div>
     </div>
@@ -271,24 +280,24 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
 
     return (
       <div className="overflow-auto max-w-full">
-        <table className="border-collapse" style={{ minWidth: 'max-content' }}>
+        <table className="border-collapse w-full" style={{ minWidth: 'max-content' }}>
           <thead>
-            <tr className="bg-gray-100">
-              <th className="border-b border-r border-gray-300 px-1 py-0.5 text-left font-medium whitespace-nowrap">#</th>
+            <tr className="bg-slate-50">
+              <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">#</th>
               {keys.map((key, keyIndex) => (
-                <th key={key} className={`border-b border-gray-300 px-1 py-0.5 text-left font-medium text-blue-600 whitespace-nowrap ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
+                <th key={key} className={`border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-blue-600 whitespace-nowrap text-xs ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
                   {key}
                 </th>
               ))}
-              <th className="border-b border-gray-300 px-1 py-0.5 text-left font-medium whitespace-nowrap">操作</th>
+              <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">操作</th>
             </tr>
           </thead>
           <tbody>
             {value.map((item, index) => (
-              <tr key={index} className="hover:bg-gray-50">
-                <td className="border-b border-r border-gray-300 px-1 py-0.5 text-gray-500 whitespace-nowrap">{index}</td>
+              <tr key={index} className="hover:bg-slate-50 transition-colors group">
+                <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{index}</td>
                 {keys.map((key, keyIndex) => (
-                  <td key={key} className={`border-b border-gray-300 px-1 py-0.5 min-w-0 ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
+                  <td key={key} className={`border-b border-slate-200 px-2 py-1.5 min-w-0 ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
                     <ValueEditor
                       value={(item as Record<string, JsonValue>)[key]}
                       path={[...path, index, key]}
@@ -297,21 +306,25 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                     />
                   </td>
                 ))}
-                <td className="border-b border-gray-300 px-1 py-0.5 whitespace-nowrap">
+                <td className="border-b border-slate-200 px-2 py-1.5 whitespace-nowrap">
                   <div className="flex gap-1">
                     <button
                       onClick={() => onInsert(path, index + 1, createEmptyItem())}
-                      className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded"
+                      className="btn btn-success"
                       title="在下方插入行"
                     >
-                      +
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
                     </button>
                     <button
                       onClick={() => onRemove(path, index)}
-                      className="px-1.5 py-0.5 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded"
+                      className="btn btn-danger"
                       title="删除此行"
                     >
-                      −
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
                     </button>
                   </div>
                 </td>
@@ -321,9 +334,12 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
         </table>
         <button
           onClick={() => onInsert(path, value.length, createEmptyItem())}
-          className="mt-1 px-2 py-0.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded"
+          className="btn btn-success mt-2"
         >
-          + 添加行
+          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Row
         </button>
       </div>
     );
@@ -332,19 +348,19 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
   // Simple array view
   return (
     <div className="overflow-auto max-w-full">
-      <table className="border-collapse" style={{ minWidth: 'max-content' }}>
+      <table className="border-collapse w-full" style={{ minWidth: 'max-content' }}>
         <thead>
-          <tr className="bg-gray-100">
-            <th className="border-b border-r border-gray-300 px-1 py-0.5 text-left font-medium whitespace-nowrap">#</th>
-            <th className="border-b border-r border-gray-300 px-1 py-0.5 text-left font-medium whitespace-nowrap">Value</th>
-            <th className="border-b border-gray-300 px-1 py-0.5 text-left font-medium whitespace-nowrap">操作</th>
+          <tr className="bg-slate-50">
+            <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">#</th>
+            <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">Value</th>
+            <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">操作</th>
           </tr>
         </thead>
         <tbody>
           {value.map((item, index) => (
-            <tr key={index} className="hover:bg-gray-50">
-              <td className="border-b border-r border-gray-300 px-1 py-0.5 text-gray-500 whitespace-nowrap">{index}</td>
-              <td className="border-b border-r border-gray-300 px-1 py-0.5 min-w-0">
+            <tr key={index} className="hover:bg-slate-50 transition-colors">
+              <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{index}</td>
+              <td className="border-b border-r border-slate-200 px-2 py-1.5 min-w-0">
                 <ValueEditor
                   value={item}
                   path={[...path, index]}
@@ -352,21 +368,25 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                   fontSize={fontSize}
                 />
               </td>
-              <td className="border-b border-gray-300 px-1 py-0.5 whitespace-nowrap">
+              <td className="border-b border-slate-200 px-2 py-1.5 whitespace-nowrap">
                 <div className="flex gap-1">
                   <button
                     onClick={() => onInsert(path, index + 1, null)}
-                    className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded"
+                    className="btn btn-success"
                     title="在下方插入项"
                   >
-                    +
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
                   </button>
                   <button
                     onClick={() => onRemove(path, index)}
-                    className="px-1.5 py-0.5 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded"
+                    className="btn btn-danger"
                     title="删除此项"
                   >
-                    −
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
                   </button>
                 </div>
               </td>
@@ -376,9 +396,12 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
       </table>
       <button
         onClick={() => onInsert(path, value.length, null)}
-        className="mt-1 px-2 py-0.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded"
+        className="btn btn-success mt-2"
       >
-        + 添加项
+        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+        Add Item
       </button>
     </div>
   );
@@ -389,17 +412,27 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
   const [copied, setCopied] = useState<'none' | 'copy' | 'compress'>('none');
   const [filterExpr, setFilterExpr] = useState('');
   const previewRef = useRef<HTMLPreElement>(null);
+  const singleValueInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const prevSelectedPathRef = useRef<string>('');
 
-  // Handle Cmd/Ctrl + A to select all in preview mode
+  // Calculate selected value
+  const selectedValue = rootValue === null ? null :
+    (selectedPath.length === 0 ? rootValue : getValueAtPath(rootValue, selectedPath));
+
+  // Determine if we're editing a single value (not object/array)
+  const isSingleValue = selectedValue !== undefined &&
+    selectedValue !== null &&
+    typeof selectedValue !== 'object';
+
+  // Handle Cmd/Ctrl + A
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
-        const target = e.target as HTMLElement;
-        // Only handle if not in an input/textarea and in preview mode
-        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+        // In preview mode, select all in preview
+        if (mode === 'preview') {
+          e.preventDefault();
           const pre = previewRef.current;
-          if (pre && mode === 'preview') {
-            e.preventDefault();
+          if (pre) {
             const range = document.createRange();
             range.selectNodeContents(pre);
             const selection = window.getSelection();
@@ -408,13 +441,37 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
               selection.addRange(range);
             }
           }
+        } else {
+          // In edit mode: only handle if editing a single value
+          if (isSingleValue && singleValueInputRef.current) {
+            e.preventDefault();
+            singleValueInputRef.current.select();
+          } else if (!isSingleValue) {
+            // Not a single value - prevent default but do nothing
+            e.preventDefault();
+          }
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [mode]);
+  }, [mode, isSingleValue]);
+
+  // Clear selection when switching nodes
+  const currentPathKey = JSON.stringify(selectedPath);
+  if (prevSelectedPathRef.current !== currentPathKey) {
+    prevSelectedPathRef.current = currentPathKey;
+    // Path changed - clear selection
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+    }
+    // Also blur any focused input
+    if (singleValueInputRef.current) {
+      singleValueInputRef.current.blur();
+    }
+  }
 
   const handleSetMode = (newMode: 'edit' | 'preview') => {
     lastEditorMode = newMode;
@@ -445,20 +502,22 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
 
   if (rootValue === null) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400">
-        No JSON loaded
+      <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+        <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <span className="text-sm">No JSON loaded</span>
       </div>
     );
   }
 
-  const selectedValue = selectedPath.length === 0
-    ? rootValue
-    : getValueAtPath(rootValue, selectedPath);
-
   if (selectedValue === undefined) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400">
-        Select a node to edit
+      <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+        <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239L7.47 5.47a1 1 0 01-.828.99L3.47 6.47m12.141 14.829l-.47-3.23a1 1 0 01.828-.99l3.172-.47" />
+        </svg>
+        <span className="text-sm">Select a node to edit</span>
       </div>
     );
   }
@@ -530,37 +589,52 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
   const displayValue = filteredResult.error ? selectedValue : filteredResult.result;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ fontSize: `${fontSize}px` }}>
-      <div className="flex items-center justify-between px-2 py-1 border-b bg-gray-50 gap-2">
-        <div className="text-gray-500 truncate flex-1">
-          Path: {selectedPath.length === 0 ? 'root' : selectedPath.join(' → ')}
+    <div className="h-full flex flex-col overflow-hidden bg-white" style={{ fontSize: `${fontSize}px` }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white gap-2">
+        <div className="flex items-center gap-2 text-slate-600 truncate flex-1">
+          <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+          </svg>
+          <span className="text-xs font-medium">Path:</span>
+          <span className="text-xs font-mono text-blue-600">
+            {selectedPath.length === 0 ? 'root' : selectedPath.join(' → ')}
+          </span>
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
             onClick={() => handleCopyCompressed(selectedValue)}
-            className={`px-1.5 py-0.5 rounded ${copied === 'compress' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+            className={`btn ${copied === 'compress' ? 'btn-primary' : 'btn-default'}`}
+            title="复制压缩格式"
           >
-            {copied === 'compress' ? 'Copied' : 'Compress'}
+            {copied === 'compress' ? 'Copied!' : 'Compress'}
           </button>
           <button
             onClick={() => handleCopy(selectedValue)}
-            className={`px-1.5 py-0.5 rounded ${copied === 'copy' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+            className={`btn ${copied === 'copy' ? 'btn-primary' : 'btn-default'}`}
+            title="复制格式化JSON"
           >
-            {copied === 'copy' ? 'Copied' : 'Copy'}
+            {copied === 'copy' ? 'Copied!' : 'Copy'}
           </button>
           {isComplex && (
             <>
-              <div className="w-px h-3 bg-gray-300" />
+              <div className="w-px h-4 bg-slate-300" />
               <button
                 onClick={() => handleSetMode('edit')}
-                className={`px-1.5 py-0.5 rounded ${mode === 'edit' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                className={`btn ${mode === 'edit' ? 'btn-primary' : 'btn-default'}`}
               >
+                <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
                 Edit
               </button>
               <button
                 onClick={() => handleSetMode('preview')}
-                className={`px-1.5 py-0.5 rounded ${mode === 'preview' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                className={`btn ${mode === 'preview' ? 'btn-primary' : 'btn-default'}`}
               >
+                <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
                 Preview
               </button>
             </>
@@ -568,28 +642,36 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
         </div>
       </div>
       {mode === 'preview' && isComplex && (
-        <div className="px-2 py-1 border-b bg-gray-50">
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-500 flex-shrink-0">Filter:</span>
+        <div className="px-3 py-2 border-b border-slate-200 bg-slate-50">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-medium flex-shrink-0">Filter:</span>
             <input
               type="text"
               value={filterExpr}
               onChange={(e) => setFilterExpr(e.target.value.trimStart())}
-              placeholder="e.g. root.filter(x => x.active), sum(root.map(x => x.price)), avg(root.map(x => x.score))"
-              className="flex-1 px-1.5 py-0.5 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+              placeholder="e.g. root.filter(x => x.active), sum(root.map(x => x.price))"
+              className="input flex-1 font-mono"
             />
           </div>
           {filteredResult.error && (
-            <div className="text-xs text-red-500 mt-0.5">{filteredResult.error}</div>
+            <div className="text-xs text-red-500 mt-1 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {filteredResult.error}
+            </div>
           )}
           {filterExpr.trim() && !filteredResult.error && filteredResult.result !== null && (
-            <div className="text-xs text-green-600 mt-0.5">
+            <div className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
               Filter applied. Result: {Array.isArray(filteredResult.result) ? `${filteredResult.result.length} items` : typeof filteredResult.result === 'object' ? `${Object.keys(filteredResult.result as object).length} keys` : 'value'}
             </div>
           )}
         </div>
       )}
-      <div className="flex-1 overflow-auto p-2">
+      <div className="flex-1 overflow-auto p-3">
         {mode === 'preview' && isComplex ? (
           (() => {
             try {
@@ -636,6 +718,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
                     value={selectedValue}
                     path={selectedPath}
                     onUpdate={onUpdate}
+                    singleValueRef={singleValueInputRef}
                   />
                 </div>
                 <button
