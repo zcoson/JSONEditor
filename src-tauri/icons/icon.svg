@@ -21,20 +21,20 @@
   <path d="M330 70 L330 130 L392 130 Z" fill="#334155"/>-->
 
   <!-- Left brace -->
-  <text x="50" y="350"
-        font-family=""
+  <text x="20" y="360"
+        font-family="Menlo"
         font-size="330"
         font-weight="bold"
         fill="url(#accentGrad)">{</text>
 
   <!-- Three dots inside braces -->
-  <circle cx="190" cy="366" r="18" fill="#a855f7" opacity="0.9"/>
-  <circle cx="256" cy="366" r="18" fill="#22d3ee" opacity="0.9"/>
-  <circle cx="320" cy="366" r="18" fill="#f472b6" opacity="0.9"/>
+  <circle cx="220" cy="330" r="18" fill="#a855f7" opacity="0.9"/>
+  <!--<circle cx="256" cy="330" r="18" fill="#22d3ee" opacity="0.9"/> -->
+  <circle cx="300" cy="330" r="18" fill="#f472b6" opacity="0.9"/>
 
   <!-- Right brace -->
-  <text x="330" y="350"
-        font-family="@@"
+  <text x="300" y="360"
+        font-family="Menlo"
         font-size="330"
         font-weight="bold"
         fill="url(#accentGrad)">}</text>

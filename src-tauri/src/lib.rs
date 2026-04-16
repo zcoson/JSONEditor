@@ -199,5 +199,20 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|_, _| {});
+    app.run(|app, event| {
+        // Handle file open events from macOS (double-click to open)
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = event {
+            for url in urls {
+                // Convert file URL to path
+                if url.scheme() == "file" {
+                    if let Ok(path) = url.to_file_path() {
+                        let path_str = path.to_string_lossy().to_string();
+                        // Emit event to frontend with the file path
+                        let _ = app.emit("file-opened", path_str);
+                    }
+                }
+            }
+        }
+    });
 }
