@@ -126,6 +126,9 @@ body {
 .btn-danger {
   background: #fee2e2;
   color: #dc2626;
+}
+
+.btn-row-action {
   padding: 1.0rem 0.375rem;
 }
 

@@ -239,7 +239,7 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
             </div>
             <button
               onClick={() => onRemoveProperty(path, key)}
-              className="btn btn-danger"
+              className="btn btn-danger btn-row-action"
               title="Delete property"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -490,7 +490,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                     <div className="flex gap-1">
                       <button
                         onClick={() => onInsert(path, actualIndex + 1, createEmptyItem())}
-                        className="btn btn-success"
+                        className="btn btn-success btn-row-action"
                         title="在下方插入行"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -499,7 +499,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                       </button>
                       <button
                         onClick={() => onRemove(path, actualIndex)}
-                        className="btn btn-danger"
+                        className="btn btn-danger btn-row-action"
                         title="删除此行"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -603,7 +603,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                   <div className="flex gap-1">
                     <button
                       onClick={() => onInsert(path, actualIndex + 1, null)}
-                      className="btn btn-success"
+                      className="btn btn-success btn-row-action"
                       title="在下方插入项"
                     >
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -612,7 +612,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                     </button>
                     <button
                       onClick={() => onRemove(path, actualIndex)}
-                      className="btn btn-danger"
+                      className="btn btn-danger btn-row-action"
                       title="删除此项"
                     >
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1024,7 +1024,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
                 </div>
                 <button
                   onClick={() => onUpdate(selectedPath, null)}
-                  className="btn btn-danger flex-shrink-0"
+                  className="btn btn-danger btn-row-action flex-shrink-0"
                   title="Set to null"
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
