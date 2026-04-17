@@ -213,7 +213,7 @@ function App() {
 
   // Update columns when root JSON or selection changes
   useEffect(() => {
-    if (!jsonValue) {
+    if (jsonValue === null) {
       setColumns([]);
       return;
     }
@@ -270,7 +270,7 @@ function App() {
 
   // Rebuild columns when nestedPaths changes
   useEffect(() => {
-    if (!jsonValue || nestedPaths.length === 0) return;
+    if (jsonValue === null || nestedPaths.length === 0) return;
 
     setColumns(prev => {
       if (prev.length <= 1) return prev;

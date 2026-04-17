@@ -43,16 +43,16 @@ export function useJsonState(): UseJsonStateReturn {
       console.log('Setting filePath to:', path);
       setFilePath(path);
     }
-    const parsed = parseJson(content);
-    if (parsed === null && content.trim()) {
-      setError('Invalid JSON');
-      setJsonValue(null);
-    } else {
+    try {
+      const parsed = JSON.parse(content);
       setError(null);
       setJsonValue(parsed);
       // Clear history when loading new file
       historyRef.current = [];
       setCanUndo(false);
+    } catch {
+      setError('Invalid JSON');
+      setJsonValue(null);
     }
   }, []);
 
