@@ -6,8 +6,8 @@ import { getValueType, getValueAtPath } from '../utils/jsonUtils';
 import { AutoResizeTextarea } from './AutoResizeTextarea';
 
 // Pagination configuration
-const PAGE_SIZE = 100; // Items per page
-const VIRTUAL_THRESHOLD = 100; // Use virtual scrolling above this threshold
+const PAGE_SIZE = 50; // Items per page
+const VIRTUAL_THRESHOLD = 51; // Use pagination above this threshold (> 50 items)
 
 // JSON syntax highlighter - memoized result type
 interface HighlightCache {
@@ -18,10 +18,13 @@ interface HighlightCache {
 // Module-level cache for highlight results
 let highlightCache: HighlightCache | null = null;
 
-// JSON syntax highlighter with caching
+// JSON syntax highlighter with caching (only for small content)
 function highlightJson(json: string): ReactNode {
+  // Don't cache for large content (> 50KB, roughly equivalent to > 100 items)
+  const shouldCache = json.length < 50000;
+
   // Check cache
-  if (highlightCache && highlightCache.json === json) {
+  if (shouldCache && highlightCache && highlightCache.json === json) {
     return highlightCache.result;
   }
 
@@ -70,9 +73,11 @@ function highlightJson(json: string): ReactNode {
     parts.push(<span key={key++}>{json.slice(lastIndex)}</span>);
   }
 
-  // Cache result
+  // Cache result only for small content
   const result = parts;
-  highlightCache = { json, result };
+  if (shouldCache) {
+    highlightCache = { json, result };
+  }
   return result;
 }
 
@@ -216,6 +221,15 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
   const [startIndex, setStartIndex] = useState(0);
   const [endIndex, setEndIndex] = useState(Math.min(PAGE_SIZE, entries.length));
 
+  // Reset pagination when path changes (node switch)
+  const pathKey = JSON.stringify(path);
+  const prevPathKeyRef = useRef(pathKey);
+  if (prevPathKeyRef.current !== pathKey) {
+    prevPathKeyRef.current = pathKey;
+    setStartIndex(0);
+    setEndIndex(Math.min(PAGE_SIZE, entries.length));
+  }
+
   // Adjust indices when entries length changes
   const prevLengthRef = useRef(entries.length);
   if (prevLengthRef.current !== entries.length) {
@@ -272,12 +286,23 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
 
   return (
     <div className="space-y-2 overflow-x-auto max-w-full">
-      {usePagination && hasMoreTop && (
-        <div
-          onClick={loadPrevPage}
-          className="text-center py-2 text-slate-400 text-xs border-b border-slate-100 cursor-pointer hover:bg-slate-100 hover:text-slate-600"
-        >
-          ↑ 点击加载上一页 (显示 {startIndex} - {endIndex} / {entries.length} 项)
+      {usePagination && (
+        <div className="flex items-center justify-between py-2 px-3 bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+          <button
+            onClick={loadPrevPage}
+            disabled={!hasMoreTop}
+            className={`px-2 py-1 rounded ${hasMoreTop ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+          >
+            ← Prev
+          </button>
+          <span>Showing {startIndex + 1} - {endIndex} of {entries.length}</span>
+          <button
+            onClick={loadNextPage}
+            disabled={!hasMore}
+            className={`px-2 py-1 rounded ${hasMore ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+          >
+            Next →
+          </button>
         </div>
       )}
       {entries.length === 0 ? (
@@ -309,52 +334,72 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
           </div>
         ))
       )}
-      {usePagination ? (
-        hasMore && (
-          <div
-            onClick={loadNextPage}
-            className="text-center py-2 text-slate-400 text-xs cursor-pointer hover:bg-slate-100 hover:text-slate-600"
-          >
-            点击加载下一页... (显示 {startIndex} - {endIndex} / {entries.length} 项)
+      <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-200">
+        {usePagination ? (
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <button
+              onClick={loadPrevPage}
+              disabled={!hasMoreTop}
+              className={`px-2 py-1 rounded ${hasMoreTop ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+            >
+              ←
+            </button>
+            <span>{startIndex + 1}-{endIndex}/{entries.length}</span>
+            <button
+              onClick={loadNextPage}
+              disabled={!hasMore}
+              className={`px-2 py-1 rounded ${hasMore ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+            >
+              →
+            </button>
           </div>
-        )
-      ) : null}
-      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200">
-        <input
-          type="text"
-          value={newKey}
-          onChange={(e) => setNewKey(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              handleAdd();
-            }
-          }}
-          placeholder="New property name"
-          className="input w-32"
-        />
-        <button
-          onClick={handleAdd}
-          disabled={!newKey.trim() || newKey.trim() in value}
-          className="btn btn-success"
-        >
-          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Property
-        </button>
+        ) : <div />}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={newKey}
+            onChange={(e) => setNewKey(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleAdd();
+              }
+            }}
+            placeholder="New property name"
+            className="input w-32"
+          />
+          <button
+            onClick={handleAdd}
+            disabled={!newKey.trim() || newKey.trim() in value}
+            className="btn btn-success"
+          >
+            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Property
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: ArrayEditorProps) {
-  // Virtual scrolling state (only used when length >= VIRTUAL_THRESHOLD)
+  // Pagination state
   const [startIndex, setStartIndex] = useState(0);
   const [endIndex, setEndIndex] = useState(Math.min(PAGE_SIZE, value.length));
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Check if we should use virtual scrolling
-  const useVirtualScrolling = value.length >= VIRTUAL_THRESHOLD;
+  // Check if we should use pagination
+  const usePagination = value.length >= VIRTUAL_THRESHOLD;
+
+  // Reset pagination when path changes (node switch)
+  const pathKey = JSON.stringify(path);
+  const prevPathKeyRef = useRef(pathKey);
+  if (prevPathKeyRef.current !== pathKey) {
+    prevPathKeyRef.current = pathKey;
+    setStartIndex(0);
+    setEndIndex(Math.min(PAGE_SIZE, value.length));
+  }
 
   // Adjust indices only when array length changes
   const prevLengthRef = useRef(value.length);
@@ -363,7 +408,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
     const newLength = value.length;
     prevLengthRef.current = newLength;
 
-    if (newLength >= VIRTUAL_THRESHOLD) {
+    if (usePagination) {
       if (newLength < oldLength) {
         // Items deleted - adjust indices to stay valid
         setEndIndex((prev) => Math.min(prev, newLength));
@@ -371,7 +416,6 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
       } else if (newLength > oldLength) {
         // Items added - extend window to show new items
         setEndIndex((prev) => {
-          // If viewing near the end, extend to include new items
           if (prev >= oldLength - PAGE_SIZE) {
             return newLength;
           }
@@ -386,97 +430,10 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
     (item) => typeof item === 'object' && item !== null && !Array.isArray(item)
   );
 
-  // Scroll event handler for virtual scrolling
-  useEffect(() => {
-    if (!useVirtualScrolling) return;
-
-    const container = containerRef.current;
-    if (!container) return;
-
-    // Find the scrollable parent
-    let scrollParent: HTMLElement | null = container;
-    while (scrollParent && !(scrollParent.classList.contains('overflow-auto') && scrollParent.scrollHeight > scrollParent.clientHeight)) {
-      scrollParent = scrollParent.parentElement;
-    }
-    if (!scrollParent) scrollParent = window as unknown as HTMLElement;
-
-    const handleScroll = () => {
-      const scrollTop = 'scrollTop' in scrollParent! ? scrollParent.scrollTop : window.scrollY;
-      const scrollHeight = 'scrollHeight' in scrollParent! ? scrollParent.scrollHeight : document.documentElement.scrollHeight;
-      const clientHeight = 'clientHeight' in scrollParent! ? scrollParent.clientHeight : window.innerHeight;
-
-      // Load more at bottom
-      if (scrollTop + clientHeight >= scrollHeight - 3 && endIndex < value.length) {
-        setEndIndex((prev) => {
-          const newEnd = Math.min(prev + PAGE_SIZE, value.length);
-          if (newEnd - startIndex > PAGE_SIZE * 2) {
-            setStartIndex((prevStart) => Math.min(prevStart + PAGE_SIZE, newEnd - PAGE_SIZE));
-          }
-          return newEnd;
-        });
-      }
-
-      // Load more at top
-      if (scrollTop <= 3 && startIndex > 0) {
-        setStartIndex((prev) => {
-          const newStart = Math.max(prev - PAGE_SIZE, 0);
-          if (endIndex - newStart > PAGE_SIZE * 2) {
-            setEndIndex((prevEnd) => Math.max(prevEnd - PAGE_SIZE, newStart + PAGE_SIZE));
-          }
-          return newStart;
-        });
-      }
-    };
-
-    const target = scrollParent === (window as unknown as HTMLElement) ? window : scrollParent;
-    target.addEventListener('scroll', handleScroll);
-    return () => target.removeEventListener('scroll', handleScroll);
-  }, [startIndex, endIndex, value.length, useVirtualScrolling]);
-
-  // Simple pagination for non-virtual mode
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const simplePrevLengthRef = useRef(value.length);
-
-  // Adjust visible count when array length changes (for simple pagination)
-  if (!useVirtualScrolling) {
-    const oldLength = simplePrevLengthRef.current;
-    if (oldLength !== value.length) {
-      simplePrevLengthRef.current = value.length;
-      // Only reset if length decreased
-      if (value.length < oldLength) {
-        setVisibleCount(Math.min(PAGE_SIZE, value.length));
-      }
-    }
-  }
-
-  // IntersectionObserver for non-virtual mode
-  useEffect(() => {
-    if (useVirtualScrolling) return;
-
-    const sentinel = loadMoreRef.current;
-    if (!sentinel) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry.isIntersecting && visibleCount < value.length) {
-          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, value.length));
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [visibleCount, value.length, useVirtualScrolling]);
-
   // Visible items
-  const visibleItems = useVirtualScrolling
-    ? value.slice(startIndex, endIndex)
-    : value.slice(0, visibleCount);
-  const hasMore = useVirtualScrolling ? endIndex < value.length : visibleCount < value.length;
-  const hasMoreTop = useVirtualScrolling && startIndex > 0;
+  const visibleItems = usePagination ? value.slice(startIndex, endIndex) : value;
+  const hasMore = usePagination && endIndex < value.length;
+  const hasMoreTop = usePagination && startIndex > 0;
 
   if (isTableMode) {
     const allKeys = new Set<string>();
@@ -494,9 +451,9 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
       return item;
     };
 
-    // Calculate actual index for virtual scrolling
+    // Calculate actual index for pagination
     const getActualIndex = (localIndex: number) =>
-      useVirtualScrolling ? startIndex + localIndex : localIndex;
+      usePagination ? startIndex + localIndex : localIndex;
 
     // Load previous page
     const loadPrevPage = () => {
@@ -519,25 +476,37 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
     };
 
     return (
-      <div ref={containerRef} className="overflow-auto max-w-full">
-        {useVirtualScrolling && hasMoreTop && (
-          <div
-            onClick={loadPrevPage}
-            className="text-center py-2 text-slate-400 text-xs border-b border-slate-100 cursor-pointer hover:bg-slate-100 hover:text-slate-600"
-          >
-            ↑ 点击加载上一页 (显示 {startIndex} - {endIndex} / {value.length} 项)
+      <div ref={containerRef} className="max-w-full flex flex-col flex-1 min-h-0">
+        {usePagination && (
+          <div className="flex items-center justify-between py-2 px-3 bg-slate-50 border-b border-slate-200 text-xs text-slate-500 flex-shrink-0">
+            <button
+              onClick={loadPrevPage}
+              disabled={!hasMoreTop}
+              className={`px-2 py-1 rounded ${hasMoreTop ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+            >
+              ← Prev
+            </button>
+            <span>Showing {startIndex + 1} - {endIndex} of {value.length}</span>
+            <button
+              onClick={loadNextPage}
+              disabled={!hasMore}
+              className={`px-2 py-1 rounded ${hasMore ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+            >
+              Next →
+            </button>
           </div>
         )}
+        <div className="overflow-auto flex-1 min-h-0">
         <table className="border-collapse w-full" style={{ minWidth: 'max-content' }}>
-          <thead>
+          <thead className="sticky top-0 z-20">
             <tr className="bg-slate-50">
-              <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">#</th>
+              <th className="sticky left-0 z-30 border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs bg-slate-50">#</th>
               {keys.map((key, keyIndex) => (
-                <th key={key} className={`border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-blue-600 whitespace-nowrap text-xs ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
+                <th key={key} className={`border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-blue-600 whitespace-nowrap text-xs bg-slate-50 ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
                   {key}
                 </th>
               ))}
-              <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">操作</th>
+              <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs bg-slate-50">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -545,7 +514,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
               const actualIndex = getActualIndex(localIndex);
               return (
                 <tr key={actualIndex} className="hover:bg-slate-50 transition-colors group">
-                  <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{actualIndex}</td>
+                  <td className="sticky left-0 z-10 border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono bg-white group-hover:bg-slate-50">{actualIndex}</td>
                   {keys.map((key, keyIndex) => (
                     <td key={key} className={`border-b border-slate-200 px-2 py-1.5 min-w-0 ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
                       <ValueEditor
@@ -561,7 +530,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                       <button
                         onClick={() => onInsert(path, actualIndex + 1, createEmptyItem())}
                         className="btn btn-success btn-row-action"
-                        title="在下方插入行"
+                        title="Insert row below"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -570,7 +539,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                       <button
                         onClick={() => onRemove(path, actualIndex)}
                         className="btn btn-danger btn-row-action"
-                        title="删除此行"
+                        title="Delete this row"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -583,39 +552,45 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
             })}
           </tbody>
         </table>
-        {useVirtualScrolling ? (
-          hasMore && (
-            <div
-              onClick={loadNextPage}
-              className="text-center py-2 text-slate-400 text-xs cursor-pointer hover:bg-slate-100 hover:text-slate-600"
-            >
-              点击加载下一页... (显示 {startIndex} - {endIndex} / {value.length} 项)
+        </div>
+        <div className="flex items-center justify-between gap-2 mt-2 flex-shrink-0">
+          {usePagination ? (
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <button
+                onClick={loadPrevPage}
+                disabled={!hasMoreTop}
+                className={`px-2 py-1 rounded ${hasMoreTop ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+              >
+                ←
+              </button>
+              <span>{startIndex + 1}-{endIndex}/{value.length}</span>
+              <button
+                onClick={loadNextPage}
+                disabled={!hasMore}
+                className={`px-2 py-1 rounded ${hasMore ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+              >
+                →
+              </button>
             </div>
-          )
-        ) : (
-          hasMore && (
-            <div ref={loadMoreRef} className="text-center py-2 text-slate-400 text-xs">
-              已加载 {visibleCount} / {value.length} 项，下拉加载更多...
-            </div>
-          )
-        )}
-        <button
-          onClick={() => onInsert(path, value.length, createEmptyItem())}
-          className="btn btn-success mt-2"
-        >
-          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Row
-        </button>
+          ) : <div />}
+          <button
+            onClick={() => onInsert(path, value.length, createEmptyItem())}
+            className="btn btn-success"
+          >
+            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Row
+          </button>
+        </div>
       </div>
     );
   }
 
   // Simple array view
-  // Calculate actual index for virtual scrolling
+  // Calculate actual index for pagination
   const getActualIndex = (localIndex: number) =>
-    useVirtualScrolling ? startIndex + localIndex : localIndex;
+    usePagination ? startIndex + localIndex : localIndex;
 
   // Load previous page
   const loadPrevPage = () => {
@@ -638,21 +613,33 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
   };
 
   return (
-    <div ref={containerRef} className="overflow-auto max-w-full">
-      {useVirtualScrolling && hasMoreTop && (
-        <div
-          onClick={loadPrevPage}
-          className="text-center py-2 text-slate-400 text-xs border-b border-slate-100 cursor-pointer hover:bg-slate-100 hover:text-slate-600"
-        >
-          ↑ 点击加载上一页 (显示 {startIndex} - {endIndex} / {value.length} 项)
+    <div ref={containerRef} className="max-w-full flex flex-col flex-1 min-h-0">
+      {usePagination && (
+        <div className="flex items-center justify-between py-2 px-3 bg-slate-50 border-b border-slate-200 text-xs text-slate-500 flex-shrink-0">
+          <button
+            onClick={loadPrevPage}
+            disabled={!hasMoreTop}
+            className={`px-2 py-1 rounded ${hasMoreTop ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+          >
+            ← Prev
+          </button>
+          <span>Showing {startIndex + 1} - {endIndex} of {value.length}</span>
+          <button
+            onClick={loadNextPage}
+            disabled={!hasMore}
+            className={`px-2 py-1 rounded ${hasMore ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+          >
+            Next →
+          </button>
         </div>
       )}
+      <div className="overflow-auto flex-1 min-h-0">
       <table className="border-collapse w-full" style={{ minWidth: 'max-content' }}>
-        <thead>
+        <thead className="sticky top-0 z-20">
           <tr className="bg-slate-50">
-            <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">#</th>
-            <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">Value</th>
-            <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">操作</th>
+            <th className="sticky left-0 z-30 border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs bg-slate-50">#</th>
+            <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs bg-slate-50">Value</th>
+            <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs bg-slate-50">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -660,7 +647,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
             const actualIndex = getActualIndex(localIndex);
             return (
               <tr key={actualIndex} className="hover:bg-slate-50 transition-colors">
-                <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{actualIndex}</td>
+                <td className="sticky left-0 z-10 border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono bg-white hover:bg-slate-50">{actualIndex}</td>
                 <td className="border-b border-r border-slate-200 px-2 py-1.5 min-w-0">
                   <ValueEditor
                     value={item}
@@ -674,7 +661,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                     <button
                       onClick={() => onInsert(path, actualIndex + 1, null)}
                       className="btn btn-success btn-row-action"
-                      title="在下方插入项"
+                      title="Insert item below"
                     >
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -683,7 +670,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                     <button
                       onClick={() => onRemove(path, actualIndex)}
                       className="btn btn-danger btn-row-action"
-                      title="删除此项"
+                      title="Delete this item"
                     >
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -696,31 +683,37 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
           })}
         </tbody>
       </table>
-      {useVirtualScrolling ? (
-        hasMore && (
-          <div
-            onClick={loadNextPage}
-            className="text-center py-2 text-slate-400 text-xs cursor-pointer hover:bg-slate-100 hover:text-slate-600"
-          >
-            点击加载下一页... (显示 {startIndex} - {endIndex} / {value.length} 项)
+      </div>
+      <div className="flex items-center justify-between gap-2 mt-2 flex-shrink-0">
+        {usePagination ? (
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <button
+              onClick={loadPrevPage}
+              disabled={!hasMoreTop}
+              className={`px-2 py-1 rounded ${hasMoreTop ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+            >
+              ←
+            </button>
+            <span>{startIndex + 1}-{endIndex}/{value.length}</span>
+            <button
+              onClick={loadNextPage}
+              disabled={!hasMore}
+              className={`px-2 py-1 rounded ${hasMore ? 'text-blue-600 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+            >
+              →
+            </button>
           </div>
-        )
-      ) : (
-        hasMore && (
-          <div ref={loadMoreRef} className="text-center py-2 text-slate-400 text-xs">
-            已加载 {visibleCount} / {value.length} 项，下拉加载更多...
-          </div>
-        )
-      )}
-      <button
-        onClick={() => onInsert(path, value.length, null)}
-        className="btn btn-success mt-2"
-      >
-        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-        Add Item
-      </button>
+        ) : <div />}
+        <button
+          onClick={() => onInsert(path, value.length, null)}
+          className="btn btn-success"
+        >
+          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Item
+        </button>
+      </div>
     </div>
   );
 }
@@ -963,14 +956,14 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
           <button
             onClick={() => handleCopyCompressed(selectedValue)}
             className={`btn ${feedback?.action === 'compress' ? (feedback.status === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white') : 'btn-default'}`}
-            title="复制压缩格式"
+            title="Copy compressed JSON"
           >
             {feedback?.action === 'compress' ? (feedback.status === 'success' ? 'Copied!' : 'Failed') : 'Compress'}
           </button>
           <button
             onClick={() => handleCopy(selectedValue)}
             className={`btn ${feedback?.action === 'copy' ? (feedback.status === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white') : 'btn-default'}`}
-            title="复制格式化JSON"
+            title="Copy formatted JSON"
           >
             {feedback?.action === 'copy' ? (feedback.status === 'success' ? 'Copied!' : 'Failed') : 'Copy'}
           </button>
@@ -1026,7 +1019,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
           )}
         </div>
       )}
-      <div className="flex-1 overflow-auto p-3">
+      <div className="flex-1 overflow-auto p-3 flex flex-col min-h-0">
         {mode === 'preview' ? (
           isComplex ? (
             (() => {
