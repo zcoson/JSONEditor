@@ -75,7 +75,7 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200 shadow-sm">
+    <div className="flex items-center gap-2 px-3 py-0.5 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200 shadow-sm">
       {/* File path and open button on the left */}
       <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white rounded-md border border-slate-200 text-xs text-slate-600 max-w-xs">
         <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,9 +1,88 @@
-import { memo, useState, useRef, useEffect, useMemo } from 'react';
+import { memo, useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type { JsonValue } from '../utils/jsonUtils';
 import { getValueType, getValueAtPath } from '../utils/jsonUtils';
 import { AutoResizeTextarea } from './AutoResizeTextarea';
+
+// Virtual list configuration
+const ROW_HEIGHT = 36; // Approximate row height in pixels
+const OVERSCAN = 5; // Extra rows to render outside viewport
+
+// Debounce delay for filter input (ms)
+const DEBOUNCE_DELAY = 300;
+
+// Dropdown options for null value
+const NULL_DROPDOWN_OPTIONS = [
+  { value: 'null', label: 'null' },
+  { value: 'empty', label: '""' },
+  { value: '0', label: '0' },
+  { value: 'true', label: 'true' },
+  { value: 'false', label: 'false' },
+];
+
+// Portal dropdown component to avoid clipping by overflow containers
+function PortalDropdown({
+  isOpen,
+  position,
+  onSelect,
+  onClose,
+}: {
+  isOpen: boolean;
+  position: { top: number; left: number };
+  onSelect: (value: string) => void;
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close on click outside
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
+    // Delay adding scroll listener to avoid immediate close
+    const timer = setTimeout(() => {
+      document.addEventListener('scroll', onClose, true);
+    }, 100);
+
+    document.addEventListener('mousedown', handleClick);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('scroll', onClose, true);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="fixed bg-white border border-slate-200 rounded shadow-lg py-1 z-[9999] min-w-[60px]"
+      style={{ top: position.top, left: position.left }}
+    >
+      {NULL_DROPDOWN_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          className="w-full px-2 py-1 text-left text-xs hover:bg-blue-50 hover:text-blue-600 transition-colors"
+          onClick={() => {
+            onSelect(opt.value);
+            onClose();
+          }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>,
+    document.body
+  );
+}
 
 // JSON syntax highlighter - memoized result type
 interface HighlightCache {
@@ -119,6 +198,8 @@ function ValueEditor({
 }) {
   const type = getValueType(value);
   const strValue = String(value);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     let newValue: JsonValue;
@@ -130,6 +211,34 @@ function ValueEditor({
       newValue = e.target.value;
     }
     onUpdate(path, newValue);
+  };
+
+  const handleDropdownSelect = (val: string) => {
+    let newValue: JsonValue;
+    if (val === 'null') {
+      newValue = null;
+    } else if (val === 'true' || val === 'false') {
+      newValue = val === 'true';
+    } else if (!isNaN(parseFloat(val))) {
+      newValue = parseFloat(val);
+    } else {
+      newValue = val === 'empty' ? '' : val;
+    }
+    onUpdate(path, newValue);
+  };
+
+  const handleDropdownOpen = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const menuHeight = NULL_DROPDOWN_OPTIONS.length * 28 + 8;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+
+    if (spaceBelow >= menuHeight || spaceBelow >= spaceAbove) {
+      setDropdownPosition({ top: rect.bottom + 2, left: rect.left });
+    } else {
+      setDropdownPosition({ top: rect.top - menuHeight - 2, left: rect.left });
+    }
+    setDropdownOpen(true);
   };
 
   if (type === 'boolean') {
@@ -145,30 +254,20 @@ function ValueEditor({
 
   if (type === 'null') {
     return (
-      <select
-        value="null"
-        onChange={(e) => {
-          const val = e.target.value;
-          let newValue: JsonValue;
-          if (val === 'null') {
-            newValue = null;
-          } else if (val === 'true' || val === 'false') {
-            newValue = val === 'true';
-          } else if (!isNaN(parseFloat(val))) {
-            newValue = parseFloat(val);
-          } else {
-            newValue = val === 'empty' ? '' : val;
-          }
-          onUpdate(path, newValue);
-        }}
-        className="px-1 py-0.5 border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-400"
-      >
-        <option value="null">null</option>
-        <option value="empty">""</option>
-        <option value="0">0</option>
-        <option value="true">true</option>
-        <option value="false">false</option>
-      </select>
+      <>
+        <button
+          onClick={handleDropdownOpen}
+          className="px-1 py-0.5 border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-400 text-xs bg-white hover:bg-slate-50"
+        >
+          null
+        </button>
+        <PortalDropdown
+          isOpen={dropdownOpen}
+          position={dropdownPosition}
+          onSelect={handleDropdownSelect}
+          onClose={() => setDropdownOpen(false)}
+        />
+      </>
     );
   }
 
@@ -236,6 +335,7 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
             <button
               onClick={() => onRemoveProperty(path, key)}
               className="btn btn-danger"
+              style={{ padding: '0.625rem 0.5rem' }}
               title="Delete property"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -274,119 +374,123 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
 }
 
 function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: ArrayEditorProps) {
-  // Check if all items are objects with same keys for table view
-  const isTableMode = value.length > 0 && value.every(
-    (item) => typeof item === 'object' && item !== null && !Array.isArray(item)
-  );
+  // Virtual scrolling state
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(400);
+  const scrollRafRef = useRef<number | null>(null);
 
-  if (isTableMode) {
+  // Calculate visible range
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(value.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN);
+
+  // Throttled scroll handler using requestAnimationFrame - only update scrollTop
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (scrollRafRef.current) {
+      return; // Skip if we already have a pending update
+    }
+    scrollRafRef.current = requestAnimationFrame(() => {
+      setScrollTop(e.currentTarget.scrollTop);
+      scrollRafRef.current = null;
+    });
+  }, []);
+
+  // Cleanup RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current) {
+        cancelAnimationFrame(scrollRafRef.current);
+      }
+    };
+  }, []);
+
+  // Use ResizeObserver to track viewport height changes
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect.height;
+      if (height && height > 0) {
+        setViewportHeight(height);
+      }
+    });
+    resizeObserver.observe(container);
+
+    // Set initial height
+    setViewportHeight(container.clientHeight);
+
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  // Check if all items are objects with same keys for table view
+  // Only check first 100 items for performance
+  const isTableMode = useMemo(() => {
+    if (value.length === 0) return false;
+    const checkCount = Math.min(value.length, 100);
+    for (let i = 0; i < checkCount; i++) {
+      const item = value[i];
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+        return false;
+      }
+    }
+    return true;
+  }, [value]);
+
+  // Collect keys from first 100 items for table header
+  const tableKeys = useMemo(() => {
+    if (!isTableMode) return [];
     const allKeys = new Set<string>();
-    value.forEach((item) => {
+    const checkCount = Math.min(value.length, 100);
+    for (let i = 0; i < checkCount; i++) {
+      const item = value[i];
       if (typeof item === 'object' && item !== null) {
         Object.keys(item).forEach((k) => allKeys.add(k));
       }
-    });
-    const keys = Array.from(allKeys);
+    }
+    return Array.from(allKeys);
+  }, [value, isTableMode]);
 
-    // Create empty object with all keys
-    const createEmptyItem = (): Record<string, JsonValue> => {
-      const item: Record<string, JsonValue> = {};
-      keys.forEach(k => item[k] = null);
-      return item;
-    };
+  // Threshold for using lightweight rendering
+  const useLightweight = value.length > 500;
 
+  // Create empty object with all keys (for table mode)
+  const createEmptyItem = useCallback((): Record<string, JsonValue> => {
+    const item: Record<string, JsonValue> = {};
+    tableKeys.forEach(k => item[k] = null);
+    return item;
+  }, [tableKeys]);
+
+  // Virtual scrolling padding
+  const topPadding = startIndex * ROW_HEIGHT;
+  const bottomPadding = (value.length - endIndex) * ROW_HEIGHT;
+
+  // Lightweight list rendering for large arrays (div-based, no table)
+  if (useLightweight) {
     return (
-      <div className="overflow-auto max-w-full">
-        <table className="border-collapse w-full" style={{ minWidth: 'max-content' }}>
-          <thead>
-            <tr className="bg-slate-50">
-              <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">#</th>
-              {keys.map((key, keyIndex) => (
-                <th key={key} className={`border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-blue-600 whitespace-nowrap text-xs ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
-                  {key}
-                </th>
-              ))}
-              <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {value.map((item, index) => (
-              <tr key={index} className="hover:bg-slate-50 transition-colors group">
-                <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{index}</td>
-                {keys.map((key, keyIndex) => (
-                  <td key={key} className={`border-b border-slate-200 px-2 py-1.5 min-w-0 ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
-                    <ValueEditor
-                      value={(item as Record<string, JsonValue>)[key]}
-                      path={[...path, index, key]}
-                      onUpdate={onUpdate}
-                      fontSize={fontSize}
-                    />
-                  </td>
-                ))}
-                <td className="border-b border-slate-200 px-2 py-1.5 whitespace-nowrap">
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => onInsert(path, index + 1, createEmptyItem())}
-                      className="btn btn-success"
-                      title="在下方插入行"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => onRemove(path, index)}
-                      className="btn btn-danger"
-                      title="删除此行"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <button
-          onClick={() => onInsert(path, value.length, createEmptyItem())}
-          className="btn btn-success mt-2"
-        >
-          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Row
-        </button>
-      </div>
-    );
-  }
-
-  // Simple array view
-  return (
-    <div className="overflow-auto max-w-full">
-      <table className="border-collapse w-full" style={{ minWidth: 'max-content' }}>
-        <thead>
-          <tr className="bg-slate-50">
-            <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">#</th>
-            <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">Value</th>
-            <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {value.map((item, index) => (
-            <tr key={index} className="hover:bg-slate-50 transition-colors">
-              <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{index}</td>
-              <td className="border-b border-r border-slate-200 px-2 py-1.5 min-w-0">
-                <ValueEditor
-                  value={item}
-                  path={[...path, index]}
-                  onUpdate={onUpdate}
-                  fontSize={fontSize}
-                />
-              </td>
-              <td className="border-b border-slate-200 px-2 py-1.5 whitespace-nowrap">
-                <div className="flex gap-1">
+      <div ref={containerRef} className="overflow-auto max-w-full h-full" onScroll={handleScroll}>
+        <div style={{ height: value.length * ROW_HEIGHT, position: 'relative' }}>
+          {/* Top spacer */}
+          {startIndex > 0 && <div style={{ height: topPadding }} />}
+          {/* Visible rows */}
+          {value.slice(startIndex, endIndex).map((item, i) => {
+            const index = startIndex + i;
+            const itemStr = typeof item === 'object' && item !== null
+              ? JSON.stringify(item)
+              : String(item);
+            return (
+              <div
+                key={index}
+                className="flex items-center gap-2 px-2 py-1 border-b border-slate-100 hover:bg-slate-50 group"
+                style={{ height: ROW_HEIGHT }}
+              >
+                <span className="text-slate-400 text-xs font-mono w-12 flex-shrink-0">{index}</span>
+                <span className="flex-1 truncate text-xs font-mono" title={itemStr}>
+                  {typeof item === 'object' && item !== null
+                    ? (Array.isArray(item) ? `[${item.length}]` : `{${Object.keys(item).length}}`)
+                    : itemStr}
+                </span>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => onInsert(path, index + 1, null)}
                     className="btn btn-success"
@@ -406,9 +510,173 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
                     </svg>
                   </button>
                 </div>
-              </td>
+              </div>
+            );
+          })}
+        </div>
+        <button
+          onClick={() => onInsert(path, value.length, null)}
+          className="btn btn-success mt-2"
+        >
+          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Item
+        </button>
+      </div>
+    );
+  }
+
+  // Table mode for object arrays (small arrays only)
+  if (isTableMode) {
+    const keys = tableKeys;
+
+    return (
+      <div ref={containerRef} className="overflow-auto max-w-full h-full" onScroll={handleScroll}>
+        <table className="border-collapse w-full" style={{ minWidth: 'max-content' }}>
+          <thead>
+            <tr className="bg-slate-50">
+              <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">#</th>
+              {keys.map((key, keyIndex) => (
+                <th key={key} className={`border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-blue-600 whitespace-nowrap text-xs ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
+                  {key}
+                </th>
+              ))}
+              <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">操作</th>
             </tr>
-          ))}
+          </thead>
+          <tbody>
+            {/* Top spacer */}
+            {startIndex > 0 && (
+              <tr style={{ height: topPadding }}>
+                <td colSpan={keys.length + 2} style={{ padding: 0 }} />
+              </tr>
+            )}
+            {/* Visible rows */}
+            {value.slice(startIndex, endIndex).map((item, i) => {
+              const index = startIndex + i;
+              return (
+                <tr key={index} className="hover:bg-slate-50 transition-colors group">
+                  <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{index}</td>
+                  {keys.map((key, keyIndex) => (
+                    <td key={key} className={`border-b border-slate-200 px-2 py-1.5 min-w-0 ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
+                      <ValueEditor
+                        value={(item as Record<string, JsonValue>)[key]}
+                        path={[...path, index, key]}
+                        onUpdate={onUpdate}
+                        fontSize={fontSize}
+                      />
+                    </td>
+                  ))}
+                  <td className="border-b border-slate-200 px-2 py-1.5 whitespace-nowrap">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => onInsert(path, index + 1, createEmptyItem())}
+                        className="btn btn-success"
+                        title="在下方插入行"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => onRemove(path, index)}
+                        className="btn btn-danger"
+                        title="删除此行"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {/* Bottom spacer */}
+            {endIndex < value.length && (
+              <tr style={{ height: bottomPadding }}>
+                <td colSpan={keys.length + 2} style={{ padding: 0 }} />
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <button
+          onClick={() => onInsert(path, value.length, createEmptyItem())}
+          className="btn btn-success mt-2"
+        >
+          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Row
+        </button>
+      </div>
+    );
+  }
+
+  // Simple array view with virtual scrolling (small arrays)
+  return (
+    <div ref={containerRef} className="overflow-auto max-w-full h-full" onScroll={handleScroll}>
+      <table className="border-collapse w-full" style={{ minWidth: 'max-content' }}>
+        <thead>
+          <tr className="bg-slate-50">
+            <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">#</th>
+            <th className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">Value</th>
+            <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap text-xs">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {/* Top spacer */}
+          {startIndex > 0 && (
+            <tr style={{ height: topPadding }}>
+              <td colSpan={3} style={{ padding: 0 }} />
+            </tr>
+          )}
+          {/* Visible rows */}
+          {value.slice(startIndex, endIndex).map((item, i) => {
+            const index = startIndex + i;
+            return (
+              <tr key={index} className="hover:bg-slate-50 transition-colors">
+                <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{index}</td>
+                <td className="border-b border-r border-slate-200 px-2 py-1.5 min-w-0">
+                  <ValueEditor
+                    value={item}
+                    path={[...path, index]}
+                    onUpdate={onUpdate}
+                    fontSize={fontSize}
+                  />
+                </td>
+                <td className="border-b border-slate-200 px-2 py-1.5 whitespace-nowrap">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => onInsert(path, index + 1, null)}
+                      className="btn btn-success"
+                      title="在下方插入项"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => onRemove(path, index)}
+                      className="btn btn-danger"
+                      title="删除此项"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+          {/* Bottom spacer */}
+          {endIndex < value.length && (
+            <tr style={{ height: bottomPadding }}>
+              <td colSpan={3} style={{ padding: 0 }} />
+            </tr>
+          )}
         </tbody>
       </table>
       <button
@@ -428,10 +696,27 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
   const [mode, setMode] = useState<'edit' | 'preview'>(lastEditorMode);
   const [copied, setCopied] = useState<'none' | 'copy' | 'compress'>('none');
   const [filterExpr, setFilterExpr] = useState('');
+  const [debouncedFilterExpr, setDebouncedFilterExpr] = useState('');
   const previewRef = useRef<HTMLPreElement>(null);
   const singleValuePreviewRef = useRef<HTMLSpanElement>(null);
   const singleValueInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const prevSelectedPathRef = useRef<string>('');
+  const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounce filter expression
+  useEffect(() => {
+    if (filterDebounceRef.current) {
+      clearTimeout(filterDebounceRef.current);
+    }
+    filterDebounceRef.current = setTimeout(() => {
+      setDebouncedFilterExpr(filterExpr);
+    }, DEBOUNCE_DELAY);
+    return () => {
+      if (filterDebounceRef.current) {
+        clearTimeout(filterDebounceRef.current);
+      }
+    };
+  }, [filterExpr]);
 
   // Calculate selected value
   const selectedValue = rootValue === null ? null :
@@ -447,54 +732,43 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
     selectedValue !== undefined &&
     typeof selectedValue === 'object';
 
-  // Handle Cmd/Ctrl + A
+  // Handle select all shortcut - only allow in input/textarea or preview area
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
-        // In preview mode, select all in preview
+        const target = e.target as HTMLElement;
+        const tagName = target.tagName.toLowerCase();
+
+        // Allow default in input, textarea
+        if (tagName === 'input' || tagName === 'textarea') {
+          return; // Let browser handle it
+        }
+
+        // In preview mode, select all in preview element
         if (mode === 'preview') {
           e.preventDefault();
-          // For complex types, use the pre element
-          if (isComplex) {
-            const pre = previewRef.current;
-            if (pre) {
-              const range = document.createRange();
-              range.selectNodeContents(pre);
-              const selection = window.getSelection();
-              if (selection) {
-                selection.removeAllRanges();
-                selection.addRange(range);
-              }
-            }
-          } else {
-            // For single values, use the span element
-            const span = singleValuePreviewRef.current;
-            if (span) {
-              const range = document.createRange();
-              range.selectNodeContents(span);
-              const selection = window.getSelection();
-              if (selection) {
-                selection.removeAllRanges();
-                selection.addRange(range);
-              }
+          const pre = previewRef.current;
+          const span = singleValuePreviewRef.current;
+          const element = isComplex ? pre : span;
+          if (element) {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            const selection = window.getSelection();
+            if (selection) {
+              selection.removeAllRanges();
+              selection.addRange(range);
             }
           }
-        } else {
-          // In edit mode: only handle if editing a single value
-          if (isSingleValue && singleValueInputRef.current) {
-            e.preventDefault();
-            singleValueInputRef.current.select();
-          } else if (!isSingleValue) {
-            // Not a single value - prevent default but do nothing
-            e.preventDefault();
-          }
+          return;
         }
+
+        // Otherwise prevent default
+        e.preventDefault();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [mode, isSingleValue, isComplex]);
+  }, [mode, isComplex]);
 
   // Clear selection when switching nodes
   const currentPathKey = JSON.stringify(selectedPath);
@@ -538,75 +812,96 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
     }
   };
 
-  // Apply filter expression to the data - must be before any early returns
-  const getFilteredValue = useMemo(() => {
-    return (value: JsonValue): { result: JsonValue | null; error: string | null } => {
-      if (!filterExpr.trim()) {
-        return { result: value, error: null };
-      }
+  // Apply filter expression with caching
+  const filterCacheKey = useRef<string>('');
+  const filterCacheResult = useRef<{ result: JsonValue | null; error: string | null }>({ result: null, error: null });
 
-      // Security: limit expression length to prevent DoS
-      if (filterExpr.length > 500) {
-        return { result: null, error: 'Expression too long (max 500 chars)' };
-      }
+  const filteredResult = useMemo(() => {
+    // Only apply filter in preview mode for complex values
+    if (mode !== 'preview' || !isComplex || !debouncedFilterExpr.trim()) {
+      return { result: selectedValue, error: null };
+    }
 
-      try {
-        // Helper functions for statistics
-        const sum = (arr: (number | string)[]) => arr.reduce((a: number, b) => {
-          const num = typeof b === 'number' ? b : (typeof b === 'string' && !isNaN(Number(b)) ? Number(b) : 0);
-          return a + num;
-        }, 0);
-        const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-        const count = (arr: unknown[]) => arr.length;
-        const min = (arr: number[]) => arr.length ? Math.min(...arr) : 0;
-        const max = (arr: number[]) => arr.length ? Math.max(...arr) : 0;
-        const unique = (arr: unknown[]) => [...new Set(arr)];
-        const groupBy = (arr: Record<string, unknown>[], key: string | ((item: Record<string, unknown>) => string)) => {
-          const result: Record<string, Record<string, unknown>[]> = {};
-          for (const item of arr) {
-            const k = typeof key === 'function' ? key(item) : String(item[key]);
-            (result[k] = result[k] || []).push(item);
-          }
+    // Security: limit expression length to prevent DoS
+    if (debouncedFilterExpr.length > 500) {
+      return { result: null, error: 'Expression too long (max 500 chars)' };
+    }
+
+    // Check cache
+    const cacheKey = `${debouncedFilterExpr}|${JSON.stringify(selectedPath)}`;
+    if (filterCacheKey.current === cacheKey) {
+      return filterCacheResult.current;
+    }
+
+    try {
+      // Helper functions for statistics
+      const sum = (arr: (number | string)[]) => arr.reduce((a: number, b) => {
+        const num = typeof b === 'number' ? b : (typeof b === 'string' && !isNaN(Number(b)) ? Number(b) : 0);
+        return a + num;
+      }, 0);
+      const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const count = (arr: unknown[]) => arr.length;
+      const min = (arr: number[]) => arr.length ? Math.min(...arr) : 0;
+      const max = (arr: number[]) => arr.length ? Math.max(...arr) : 0;
+      const unique = (arr: unknown[]) => [...new Set(arr)];
+      const groupBy = (arr: Record<string, unknown>[], key: string | ((item: Record<string, unknown>) => string)) => {
+        const result: Record<string, Record<string, unknown>[]> = {};
+        for (const item of arr) {
+          const k = typeof key === 'function' ? key(item) : String(item[key]);
+          (result[k] = result[k] || []).push(item);
+        }
+        return result;
+      };
+
+      // Create a safe evaluation context
+      const func = new Function('root', 'sum', 'avg', 'count', 'min', 'max', 'unique', 'groupBy', `
+        "use strict";
+        try {
+          const result = ${debouncedFilterExpr};
           return result;
-        };
-
-        // Create a safe evaluation context
-        // Note: This is intentionally allowing user expressions for data transformation
-        // The expression length is limited above to mitigate DoS risk
-        const func = new Function('root', 'sum', 'avg', 'count', 'min', 'max', 'unique', 'groupBy', `
-          "use strict";
-          try {
-            const result = ${filterExpr};
-            return result;
-          } catch (e) {
-            throw new Error('Filter error: ' + e.message);
-          }
-        `);
-        const result = func(value, sum, avg, count, min, max, unique, groupBy);
-
-        // Validate result is JSON-serializable
-        if (result === undefined) {
-          return { result: null, error: null };
+        } catch (e) {
+          throw new Error('Filter error: ' + e.message);
         }
+      `);
+      const result = func(selectedValue, sum, avg, count, min, max, unique, groupBy);
 
-        // Check if result is a valid JSON value (not a function, etc.)
-        if (typeof result === 'function') {
-          return { result: null, error: 'Result is a function, not JSON data' };
-        }
-
-        // Try to serialize to validate it's valid JSON
-        const serialized = JSON.stringify(result);
-        if (serialized === undefined) {
-          return { result: null, error: 'Result cannot be serialized to JSON' };
-        }
-
-        return { result, error: null };
-      } catch (e) {
-        const errorMsg = e instanceof Error ? e.message : String(e);
-        return { result: null, error: errorMsg };
+      // Validate result is JSON-serializable
+      if (result === undefined) {
+        const cached = { result: null, error: null };
+        filterCacheKey.current = cacheKey;
+        filterCacheResult.current = cached;
+        return cached;
       }
-    };
-  }, [filterExpr]);
+
+      // Check if result is a valid JSON value (not a function, etc.)
+      if (typeof result === 'function') {
+        const cached = { result: null, error: 'Result is a function, not JSON data' };
+        filterCacheKey.current = cacheKey;
+        filterCacheResult.current = cached;
+        return cached;
+      }
+
+      // Try to serialize to validate it's valid JSON
+      const serialized = JSON.stringify(result);
+      if (serialized === undefined) {
+        const cached = { result: null, error: 'Result cannot be serialized to JSON' };
+        filterCacheKey.current = cacheKey;
+        filterCacheResult.current = cached;
+        return cached;
+      }
+
+      const cached = { result, error: null };
+      filterCacheKey.current = cacheKey;
+      filterCacheResult.current = cached;
+      return cached;
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      const cached = { result: null, error: errorMsg };
+      filterCacheKey.current = cacheKey;
+      filterCacheResult.current = cached;
+      return cached;
+    }
+  }, [mode, isComplex, debouncedFilterExpr, selectedValue, selectedPath]);
 
   if (rootValue === null) {
     return (
@@ -632,7 +927,6 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
 
   const type = getValueType(selectedValue);
 
-  const filteredResult = mode === 'preview' && isComplex ? getFilteredValue(selectedValue) : { result: selectedValue, error: null };
   const displayValue = filteredResult.error ? selectedValue : filteredResult.result;
 
   return (
@@ -695,6 +989,9 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
               placeholder="e.g. root.filter(x => x.active), sum(root.map(x => x.price))"
               className="input flex-1 font-mono"
             />
+            {filterExpr !== debouncedFilterExpr && (
+              <span className="text-xs text-slate-400">...</span>
+            )}
           </div>
           {filteredResult.error && (
             <div className="text-xs text-red-500 mt-1 flex items-center gap-1">
@@ -704,7 +1001,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
               {filteredResult.error}
             </div>
           )}
-          {filterExpr.trim() && !filteredResult.error && filteredResult.result !== null && (
+          {debouncedFilterExpr.trim() && !filteredResult.error && filteredResult.result !== null && (
             <div className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -723,9 +1020,11 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
                   return <div className="text-gray-400 italic">No result</div>;
                 }
                 const jsonStr = JSON.stringify(displayValue, null, 2);
+                // Skip highlighting for large arrays (>2000 items) for performance
+                const skipHighlight = Array.isArray(displayValue) && displayValue.length > 2000;
                 return (
                   <pre ref={previewRef} className="font-mono whitespace-pre-wrap break-all">
-                    {highlightJson(jsonStr)}
+                    {skipHighlight ? jsonStr : highlightJson(jsonStr)}
                   </pre>
                 );
               } catch {
@@ -772,11 +1071,13 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
                 </div>
                 <button
                   onClick={() => onUpdate(selectedPath, null)}
-                  className="px-1 py-0.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded flex-shrink-0"
-                  style={{ fontSize: '1.5em' }}
+                  className="btn btn-danger flex-shrink-0"
+                  style={{ padding: '0.625rem 0.5rem' }}
                   title="Set to null"
                 >
-                  ⊘
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
                 </button>
               </div>
             )}

@@ -1,4 +1,4 @@
-import { useState, memo, useMemo, useRef, useEffect } from 'react';
+import { useState, memo, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { JsonValue } from '../utils/jsonUtils';
 import { getValueType } from '../utils/jsonUtils';
 
@@ -20,6 +20,7 @@ interface TreeNodeProps {
   collapseAll: (path: (string | number)[], value: JsonValue) => void;
   searchTerm: string;
   matchedPaths: Set<string>;
+  selectedNodeRef: React.RefObject<HTMLDivElement | null>;
 }
 
 // Helper to collect all paths under a value
@@ -141,6 +142,7 @@ const TreeNode = memo(function TreeNode({
   collapseAll,
   searchTerm,
   matchedPaths,
+  selectedNodeRef,
 }: TreeNodeProps) {
   const type = getValueType(value);
   const pathKey = path.join('.');
@@ -193,6 +195,7 @@ const TreeNode = memo(function TreeNode({
   return (
     <div className="select-none">
       <div
+        ref={isSelected ? selectedNodeRef : null}
         className={`flex items-center py-1 px-2 rounded-md cursor-pointer whitespace-nowrap transition-colors ${
           isSelected
             ? 'bg-blue-50 border border-blue-200'
@@ -256,6 +259,7 @@ const TreeNode = memo(function TreeNode({
                 collapseAll={collapseAll}
                 searchTerm={searchTerm}
                 matchedPaths={matchedPaths}
+                selectedNodeRef={selectedNodeRef}
               />
             );
           })}
@@ -268,13 +272,21 @@ const TreeNode = memo(function TreeNode({
 export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
   const [expandedMap, setExpandedMap] = useState<Map<string, boolean>>(new Map());
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const treeContainerRef = useRef<HTMLDivElement>(null);
+  const selectedNodeRef = useRef<HTMLDivElement>(null);
 
-  // Compute matched paths based on search term
-  const matchedPaths = useMemo(() => {
-    if (!value || !searchTerm) return new Set<string>();
-    return searchJson(value, searchTerm, []);
+  // Compute matched paths based on search term (as ordered array)
+  const matchedPathsArray = useMemo(() => {
+    if (!value || !searchTerm) return [];
+    const matches = searchJson(value, searchTerm, []);
+    // Sort paths to maintain consistent order
+    return Array.from(matches).sort();
   }, [value, searchTerm]);
+
+  // For backward compatibility, also provide as Set
+  const matchedPaths = useMemo(() => new Set(matchedPathsArray), [matchedPathsArray]);
 
   // Expand all matched paths when searching
   useEffect(() => {
@@ -297,7 +309,28 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
     }
   }, [searchTerm, matchedPaths]);
 
-  // Keyboard shortcut to focus search
+  // Navigate to next/previous match
+  const navigateMatch = useCallback((direction: 'next' | 'prev') => {
+    if (matchedPathsArray.length === 0) return;
+
+    let newIndex = currentMatchIndex;
+    if (direction === 'next') {
+      newIndex = (currentMatchIndex + 1) % matchedPathsArray.length;
+    } else {
+      newIndex = (currentMatchIndex - 1 + matchedPathsArray.length) % matchedPathsArray.length;
+    }
+    setCurrentMatchIndex(newIndex);
+
+    // Parse path and select
+    const pathStr = matchedPathsArray[newIndex];
+    const path = pathStr.split('.').map(p => {
+      const num = parseInt(p);
+      return isNaN(num) ? p : num;
+    });
+    onSelect(path);
+  }, [matchedPathsArray, currentMatchIndex, onSelect]);
+
+  // Keyboard shortcut to focus search and navigate matches
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
@@ -306,12 +339,38 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
       }
       if (e.key === 'Escape' && document.activeElement === searchInputRef.current) {
         setSearchTerm('');
+        setCurrentMatchIndex(0);
         searchInputRef.current?.blur();
+      }
+      // Enter key to navigate to next match
+      if (e.key === 'Enter' && document.activeElement === searchInputRef.current) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          navigateMatch('prev');
+        } else {
+          navigateMatch('next');
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [navigateMatch]);
+
+  // Scroll selected node into view
+  useEffect(() => {
+    if (selectedNodeRef.current && treeContainerRef.current) {
+      const container = treeContainerRef.current;
+      const node = selectedNodeRef.current;
+
+      const containerRect = container.getBoundingClientRect();
+      const nodeRect = node.getBoundingClientRect();
+
+      // Check if node is out of view
+      if (nodeRect.top < containerRect.top || nodeRect.bottom > containerRect.bottom) {
+        node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+  }, [selectedPath]);
 
   const toggleExpand = (pathKey: string) => {
     setExpandedMap((prev) => {
@@ -350,8 +409,8 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Search bar */}
-      <div className="flex items-center gap-2 px-0 pb-1.5 border-b border-slate-200 bg-slate-50 flex-shrink-0">
-        <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex items-center gap-2 px-3 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex-shrink-0" style={{ padding: '4px 12px' }}>
+        <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
         <input
@@ -360,27 +419,34 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
           placeholder="Search... (⌘F)"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+          className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+          style={{ height: '28px' }}
         />
         {searchTerm && (
-          <span className="text-xs text-slate-500 flex-shrink-0">
-            {matchedPaths.size} match{matchedPaths.size !== 1 ? 'es' : ''}
-          </span>
-        )}
-        {searchTerm && (
-          <button
-            onClick={() => setSearchTerm('')}
-            className="text-slate-400 hover:text-slate-600 flex-shrink-0"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <>
+            <span className="text-xs text-slate-500 flex-shrink-0 tabular-nums">
+              {matchedPathsArray.length > 0
+                ? `${currentMatchIndex + 1}/${matchedPathsArray.length}`
+                : 'No match'}
+            </span>
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setCurrentMatchIndex(0);
+              }}
+              className="text-slate-400 hover:text-slate-600 flex-shrink-0"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </>
         )}
       </div>
       {/* Tree content */}
       <div
-        className="font-mono overflow-auto flex-1"
+        ref={treeContainerRef}
+        className="font-mono overflow-auto flex-1 px-2"
         style={{
           minWidth: 'max-content',
           fontSize: '13px',
@@ -399,6 +465,7 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
           collapseAll={collapseAll}
           searchTerm={searchTerm}
           matchedPaths={matchedPaths}
+          selectedNodeRef={selectedNodeRef}
         />
       </div>
     </div>
