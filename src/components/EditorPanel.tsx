@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { memo, useState, useRef, useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type { JsonValue } from '../utils/jsonUtils';
@@ -211,6 +211,58 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
   const entries = Object.entries(value);
   const [newKey, setNewKey] = useState('');
 
+  // Pagination state for objects with many properties
+  const usePagination = entries.length >= VIRTUAL_THRESHOLD;
+  const [startIndex, setStartIndex] = useState(0);
+  const [endIndex, setEndIndex] = useState(Math.min(PAGE_SIZE, entries.length));
+
+  // Adjust indices when entries length changes
+  const prevLengthRef = useRef(entries.length);
+  if (prevLengthRef.current !== entries.length) {
+    const oldLength = prevLengthRef.current;
+    const newLength = entries.length;
+    prevLengthRef.current = newLength;
+
+    if (usePagination) {
+      if (newLength < oldLength) {
+        setEndIndex((prev) => Math.min(prev, newLength));
+        setStartIndex((prev) => Math.min(prev, Math.max(0, newLength - PAGE_SIZE)));
+      } else if (newLength > oldLength) {
+        setEndIndex((prev) => {
+          if (prev >= oldLength - PAGE_SIZE) {
+            return newLength;
+          }
+          return prev;
+        });
+      }
+    }
+  }
+
+  // Visible entries
+  const visibleEntries = usePagination ? entries.slice(startIndex, endIndex) : entries;
+  const hasMore = usePagination && endIndex < entries.length;
+  const hasMoreTop = usePagination && startIndex > 0;
+
+  // Load previous page
+  const loadPrevPage = () => {
+    if (startIndex > 0) {
+      setStartIndex((prev) => Math.max(prev - PAGE_SIZE, 0));
+      if (endIndex - startIndex >= PAGE_SIZE) {
+        setEndIndex((prev) => Math.max(prev - PAGE_SIZE, startIndex));
+      }
+    }
+  };
+
+  // Load next page
+  const loadNextPage = () => {
+    if (endIndex < entries.length) {
+      setEndIndex((prev) => Math.min(prev + PAGE_SIZE, entries.length));
+      if (endIndex - startIndex >= PAGE_SIZE) {
+        setStartIndex((prev) => Math.min(prev + PAGE_SIZE, endIndex));
+      }
+    }
+  };
+
   const handleAdd = () => {
     if (newKey.trim() && !(newKey.trim() in value)) {
       onAddProperty(path, newKey.trim(), null);
@@ -220,10 +272,18 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
 
   return (
     <div className="space-y-2 overflow-x-auto max-w-full">
+      {usePagination && hasMoreTop && (
+        <div
+          onClick={loadPrevPage}
+          className="text-center py-2 text-slate-400 text-xs border-b border-slate-100 cursor-pointer hover:bg-slate-100 hover:text-slate-600"
+        >
+          ↑ 点击加载上一页 (显示 {startIndex} - {endIndex} / {entries.length} 项)
+        </div>
+      )}
       {entries.length === 0 ? (
         <div className="text-slate-400 italic text-sm py-4 text-center">Empty object</div>
       ) : (
-        entries.map(([key, val]) => (
+        visibleEntries.map(([key, val]) => (
           <div key={key} className="flex items-center gap-2 min-w-0 group">
             <span className="font-semibold text-blue-600 w-32 truncate flex-shrink-0 text-sm">
               {key}
@@ -249,6 +309,16 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
           </div>
         ))
       )}
+      {usePagination ? (
+        hasMore && (
+          <div
+            onClick={loadNextPage}
+            className="text-center py-2 text-slate-400 text-xs cursor-pointer hover:bg-slate-100 hover:text-slate-600"
+          >
+            点击加载下一页... (显示 {startIndex} - {endIndex} / {entries.length} 项)
+          </div>
+        )
+      ) : null}
       <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200">
         <input
           type="text"
