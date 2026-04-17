@@ -420,7 +420,7 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-          style={{ height: '28px' }}
+          style={{ height: '30px' }}
         />
         {searchTerm && (
           <>
