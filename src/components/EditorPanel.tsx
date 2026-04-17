@@ -953,7 +953,22 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
                 if (displayValue === null) {
                   return <div className="text-gray-400 italic">No result</div>;
                 }
+                // Check if it's an array with more than 100 items
+                const isArray = Array.isArray(displayValue);
+                const arrayLength = isArray ? displayValue.length : 0;
+                const usePreTag = isArray && arrayLength > 100;
+
                 const jsonStr = JSON.stringify(displayValue, null, 2);
+
+                if (usePreTag) {
+                  // For large arrays (>100), use simple pre tag for better performance
+                  return (
+                    <pre ref={previewRef} className="font-mono whitespace-pre-wrap break-all">
+                      {jsonStr}
+                    </pre>
+                  );
+                }
+
                 return (
                   <pre ref={previewRef} className="font-mono whitespace-pre-wrap break-all">
                     {highlightJson(jsonStr)}
