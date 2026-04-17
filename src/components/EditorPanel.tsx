@@ -6,7 +6,7 @@ import { getValueType, getValueAtPath } from '../utils/jsonUtils';
 import { AutoResizeTextarea } from './AutoResizeTextarea';
 
 // Pagination configuration
-const PAGE_SIZE = 50; // Items per page
+const PAGE_SIZE = 100; // Items per page
 const VIRTUAL_THRESHOLD = 100; // Use virtual scrolling above this threshold
 
 // JSON syntax highlighter - memoized result type
