@@ -7,6 +7,7 @@ import { AutoResizeTextarea } from './AutoResizeTextarea';
 
 // Pagination configuration
 const PAGE_SIZE = 50; // Items per page
+const VIRTUAL_THRESHOLD = 100; // Use virtual scrolling above this threshold
 
 // JSON syntax highlighter - memoized result type
 interface HighlightCache {
@@ -277,15 +278,22 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
 }
 
 function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: ArrayEditorProps) {
-  // Pagination state
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
+  // Virtual scrolling state (only used when length >= VIRTUAL_THRESHOLD)
+  const [startIndex, setStartIndex] = useState(0);
+  const [endIndex, setEndIndex] = useState(Math.min(PAGE_SIZE, value.length));
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Reset visible count when value changes
+  // Check if we should use virtual scrolling
+  const useVirtualScrolling = value.length >= VIRTUAL_THRESHOLD;
+
+  // Reset indices when value changes
   const prevValueRef = useRef(value);
   if (prevValueRef.current !== value) {
     prevValueRef.current = value;
-    setVisibleCount(PAGE_SIZE);
+    if (value.length >= VIRTUAL_THRESHOLD) {
+      setStartIndex(0);
+      setEndIndex(Math.min(PAGE_SIZE, value.length));
+    }
   }
 
   // Check if all items are objects with same keys for table view
@@ -293,8 +301,66 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
     (item) => typeof item === 'object' && item !== null && !Array.isArray(item)
   );
 
-  // Use IntersectionObserver to detect when bottom is visible
+  // Scroll event handler for virtual scrolling
   useEffect(() => {
+    if (!useVirtualScrolling) return;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Find the scrollable parent
+    let scrollParent: HTMLElement | null = container;
+    while (scrollParent && !(scrollParent.classList.contains('overflow-auto') && scrollParent.scrollHeight > scrollParent.clientHeight)) {
+      scrollParent = scrollParent.parentElement;
+    }
+    if (!scrollParent) scrollParent = window as unknown as HTMLElement;
+
+    const handleScroll = () => {
+      const scrollTop = 'scrollTop' in scrollParent! ? scrollParent.scrollTop : window.scrollY;
+      const scrollHeight = 'scrollHeight' in scrollParent! ? scrollParent.scrollHeight : document.documentElement.scrollHeight;
+      const clientHeight = 'clientHeight' in scrollParent! ? scrollParent.clientHeight : window.innerHeight;
+
+      // Load more at bottom
+      if (scrollTop + clientHeight >= scrollHeight - 100 && endIndex < value.length) {
+        setEndIndex((prev) => {
+          const newEnd = Math.min(prev + PAGE_SIZE, value.length);
+          if (newEnd - startIndex > PAGE_SIZE * 2) {
+            setStartIndex((prevStart) => Math.min(prevStart + PAGE_SIZE, newEnd - PAGE_SIZE));
+          }
+          return newEnd;
+        });
+      }
+
+      // Load more at top
+      if (scrollTop <= 100 && startIndex > 0) {
+        setStartIndex((prev) => {
+          const newStart = Math.max(prev - PAGE_SIZE, 0);
+          if (endIndex - newStart > PAGE_SIZE * 2) {
+            setEndIndex((prevEnd) => Math.max(prevEnd - PAGE_SIZE, newStart + PAGE_SIZE));
+          }
+          return newStart;
+        });
+      }
+    };
+
+    const target = scrollParent === (window as unknown as HTMLElement) ? window : scrollParent;
+    target.addEventListener('scroll', handleScroll);
+    return () => target.removeEventListener('scroll', handleScroll);
+  }, [startIndex, endIndex, value.length, useVirtualScrolling]);
+
+  // Simple pagination for non-virtual mode
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  // Reset visible count when value changes (for simple pagination)
+  if (!useVirtualScrolling && prevValueRef.current !== value) {
+    setVisibleCount(PAGE_SIZE);
+  }
+
+  // IntersectionObserver for non-virtual mode
+  useEffect(() => {
+    if (useVirtualScrolling) return;
+
     const sentinel = loadMoreRef.current;
     if (!sentinel) return;
 
@@ -302,19 +368,22 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
       (entries) => {
         const entry = entries[0];
         if (entry.isIntersecting && visibleCount < value.length) {
-          setVisibleCount(prev => Math.min(prev + PAGE_SIZE, value.length));
+          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, value.length));
         }
       },
-      { rootMargin: '100px' }
+      { threshold: 0.1 }
     );
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [visibleCount, value.length]);
+  }, [visibleCount, value.length, useVirtualScrolling]);
 
   // Visible items
-  const visibleItems = value.slice(0, visibleCount);
-  const hasMore = visibleCount < value.length;
+  const visibleItems = useVirtualScrolling
+    ? value.slice(startIndex, endIndex)
+    : value.slice(0, visibleCount);
+  const hasMore = useVirtualScrolling ? endIndex < value.length : visibleCount < value.length;
+  const hasMoreTop = useVirtualScrolling && startIndex > 0;
 
   if (isTableMode) {
     const allKeys = new Set<string>();
@@ -332,8 +401,40 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
       return item;
     };
 
+    // Calculate actual index for virtual scrolling
+    const getActualIndex = (localIndex: number) =>
+      useVirtualScrolling ? startIndex + localIndex : localIndex;
+
+    // Load previous page
+    const loadPrevPage = () => {
+      if (startIndex > 0) {
+        setStartIndex((prev) => Math.max(prev - PAGE_SIZE, 0));
+        if (endIndex - startIndex >= PAGE_SIZE) {
+          setEndIndex((prev) => Math.max(prev - PAGE_SIZE, startIndex));
+        }
+      }
+    };
+
+    // Load next page
+    const loadNextPage = () => {
+      if (endIndex < value.length) {
+        setEndIndex((prev) => Math.min(prev + PAGE_SIZE, value.length));
+        if (endIndex - startIndex >= PAGE_SIZE) {
+          setStartIndex((prev) => Math.min(prev + PAGE_SIZE, endIndex));
+        }
+      }
+    };
+
     return (
-      <div className="overflow-auto max-w-full">
+      <div ref={containerRef} className="overflow-auto max-w-full">
+        {useVirtualScrolling && hasMoreTop && (
+          <div
+            onClick={loadPrevPage}
+            className="text-center py-2 text-slate-400 text-xs border-b border-slate-100 cursor-pointer hover:bg-slate-100 hover:text-slate-600"
+          >
+            ↑ 点击加载上一页 (显示 {startIndex} - {endIndex} / {value.length} 项)
+          </div>
+        )}
         <table className="border-collapse w-full" style={{ minWidth: 'max-content' }}>
           <thead>
             <tr className="bg-slate-50">
@@ -347,49 +448,63 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
             </tr>
           </thead>
           <tbody>
-            {visibleItems.map((item, index) => (
-              <tr key={index} className="hover:bg-slate-50 transition-colors group">
-                <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{index}</td>
-                {keys.map((key, keyIndex) => (
-                  <td key={key} className={`border-b border-slate-200 px-2 py-1.5 min-w-0 ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
-                    <ValueEditor
-                      value={(item as Record<string, JsonValue>)[key]}
-                      path={[...path, index, key]}
-                      onUpdate={onUpdate}
-                      fontSize={fontSize}
-                    />
+            {visibleItems.map((item, localIndex) => {
+              const actualIndex = getActualIndex(localIndex);
+              return (
+                <tr key={actualIndex} className="hover:bg-slate-50 transition-colors group">
+                  <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{actualIndex}</td>
+                  {keys.map((key, keyIndex) => (
+                    <td key={key} className={`border-b border-slate-200 px-2 py-1.5 min-w-0 ${keyIndex < keys.length - 1 ? 'border-r' : ''}`}>
+                      <ValueEditor
+                        value={(item as Record<string, JsonValue>)[key]}
+                        path={[...path, actualIndex, key]}
+                        onUpdate={onUpdate}
+                        fontSize={fontSize}
+                      />
+                    </td>
+                  ))}
+                  <td className="border-b border-slate-200 px-2 py-1.5 whitespace-nowrap">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => onInsert(path, actualIndex + 1, createEmptyItem())}
+                        className="btn btn-success"
+                        title="在下方插入行"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => onRemove(path, actualIndex)}
+                        className="btn btn-danger"
+                        title="删除此行"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
-                ))}
-                <td className="border-b border-slate-200 px-2 py-1.5 whitespace-nowrap">
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => onInsert(path, index + 1, createEmptyItem())}
-                      className="btn btn-success"
-                      title="在下方插入行"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => onRemove(path, index)}
-                      className="btn btn-danger"
-                      title="删除此行"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        {hasMore && (
-          <div ref={loadMoreRef} className="text-center py-2 text-slate-400 text-xs">
-            已加载 {visibleCount} / {value.length} 项，下拉加载更多...
-          </div>
+        {useVirtualScrolling ? (
+          hasMore && (
+            <div
+              onClick={loadNextPage}
+              className="text-center py-2 text-slate-400 text-xs cursor-pointer hover:bg-slate-100 hover:text-slate-600"
+            >
+              点击加载下一页... (显示 {startIndex} - {endIndex} / {value.length} 项)
+            </div>
+          )
+        ) : (
+          hasMore && (
+            <div ref={loadMoreRef} className="text-center py-2 text-slate-400 text-xs">
+              已加载 {visibleCount} / {value.length} 项，下拉加载更多...
+            </div>
+          )
         )}
         <button
           onClick={() => onInsert(path, value.length, createEmptyItem())}
@@ -405,8 +520,40 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
   }
 
   // Simple array view
+  // Calculate actual index for virtual scrolling
+  const getActualIndex = (localIndex: number) =>
+    useVirtualScrolling ? startIndex + localIndex : localIndex;
+
+  // Load previous page
+  const loadPrevPage = () => {
+    if (startIndex > 0) {
+      setStartIndex((prev) => Math.max(prev - PAGE_SIZE, 0));
+      if (endIndex - startIndex >= PAGE_SIZE) {
+        setEndIndex((prev) => Math.max(prev - PAGE_SIZE, startIndex));
+      }
+    }
+  };
+
+  // Load next page
+  const loadNextPage = () => {
+    if (endIndex < value.length) {
+      setEndIndex((prev) => Math.min(prev + PAGE_SIZE, value.length));
+      if (endIndex - startIndex >= PAGE_SIZE) {
+        setStartIndex((prev) => Math.min(prev + PAGE_SIZE, endIndex));
+      }
+    }
+  };
+
   return (
-    <div className="overflow-auto max-w-full">
+    <div ref={containerRef} className="overflow-auto max-w-full">
+      {useVirtualScrolling && hasMoreTop && (
+        <div
+          onClick={loadPrevPage}
+          className="text-center py-2 text-slate-400 text-xs border-b border-slate-100 cursor-pointer hover:bg-slate-100 hover:text-slate-600"
+        >
+          ↑ 点击加载上一页 (显示 {startIndex} - {endIndex} / {value.length} 项)
+        </div>
+      )}
       <table className="border-collapse w-full" style={{ minWidth: 'max-content' }}>
         <thead>
           <tr className="bg-slate-50">
@@ -416,47 +563,58 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
           </tr>
         </thead>
         <tbody>
-          {visibleItems.map((item, index) => (
-            <tr key={index} className="hover:bg-slate-50 transition-colors">
-              <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{index}</td>
-              <td className="border-b border-r border-slate-200 px-2 py-1.5 min-w-0">
-                <ValueEditor
-                  value={item}
-                  path={[...path, index]}
-                  onUpdate={onUpdate}
-                  fontSize={fontSize}
-                />
-              </td>
-              <td className="border-b border-slate-200 px-2 py-1.5 whitespace-nowrap">
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => onInsert(path, index + 1, null)}
-                    className="btn btn-success"
-                    title="在下方插入项"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => onRemove(path, index)}
-                    className="btn btn-danger"
-                    title="删除此项"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {visibleItems.map((item, localIndex) => {
+            const actualIndex = getActualIndex(localIndex);
+            return (
+              <tr key={actualIndex} className="hover:bg-slate-50 transition-colors">
+                <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{actualIndex}</td>
+                <td className="border-b border-r border-slate-200 px-2 py-1.5 min-w-0">
+                  <ValueEditor
+                    value={item}
+                    path={[...path, actualIndex]}
+                    onUpdate={onUpdate}
+                    fontSize={fontSize}
+                  />
+                </td>
+                <td className="border-b border-slate-200 px-2 py-1.5 whitespace-nowrap">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => onInsert(path, actualIndex + 1, null)}
+                      className="btn btn-success"
+                      title="在下方插入项"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => onRemove(path, actualIndex)}
+                      className="btn btn-danger"
+                      title="删除此项"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
-      {hasMore && (
-        <div ref={loadMoreRef} className="text-center py-2 text-slate-400 text-xs">
-          已加载 {visibleCount} / {value.length} 项，下拉加载更多...
-        </div>
+      {useVirtualScrolling ? (
+        hasMore && (
+          <div className="text-center py-2 text-slate-400 text-xs">
+            下拉加载更多... (显示 {startIndex} - {endIndex} / {value.length} 项)
+          </div>
+        )
+      ) : (
+        hasMore && (
+          <div ref={loadMoreRef} className="text-center py-2 text-slate-400 text-xs">
+            已加载 {visibleCount} / {value.length} 项，下拉加载更多...
+          </div>
+        )
       )}
       <button
         onClick={() => onInsert(path, value.length, null)}
