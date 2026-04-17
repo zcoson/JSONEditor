@@ -101,7 +101,7 @@ function App() {
 
   // Handle keyboard shortcut for save (Cmd+S on macOS, Ctrl+S on Windows/Linux)
   const handleSave = useCallback(async () => {
-    if (!rawContent) return;
+    if (!rawContent) return false;
 
     try {
       const path = filePath || await save({
@@ -112,9 +112,12 @@ function App() {
 
       if (path) {
         await invoke('write_file', { path, content: rawContent });
+        return true;
       }
+      return false;
     } catch (error) {
       console.error('Failed to save file:', error);
+      return false;
     }
   }, [rawContent, filePath]);
 

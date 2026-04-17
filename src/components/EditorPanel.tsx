@@ -657,7 +657,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
 
 export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, onUpdate, onInsert, onRemove, onAddProperty, onRemoveProperty, fontSize = 14 }: EditorPanelProps) {
   const [mode, setMode] = useState<'edit' | 'preview'>(lastEditorMode);
-  const [copied, setCopied] = useState<'none' | 'copy' | 'compress'>('none');
+  const [feedback, setFeedback] = useState<{ action: string; status: 'success' | 'error' } | null>(null);
   const [filterExpr, setFilterExpr] = useState('');
   const previewRef = useRef<HTMLPreElement>(null);
   const singleValuePreviewRef = useRef<HTMLSpanElement>(null);
@@ -753,14 +753,19 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
     setMode(newMode);
   };
 
+  const showFeedback = (action: string, status: 'success' | 'error' = 'success') => {
+    setFeedback({ action, status });
+    setTimeout(() => setFeedback(null), 1500);
+  };
+
   const handleCopy = async (value: JsonValue) => {
     try {
       const content = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
       await writeText(content);
-      setCopied('copy');
-      setTimeout(() => setCopied('none'), 1500);
+      showFeedback('copy');
     } catch (error) {
       console.error('Failed to copy:', error);
+      showFeedback('copy', 'error');
     }
   };
 
@@ -768,10 +773,10 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
     try {
       const content = typeof value === 'string' ? value : JSON.stringify(value);
       await writeText(content);
-      setCopied('compress');
-      setTimeout(() => setCopied('none'), 1500);
+      showFeedback('compress');
     } catch (error) {
       console.error('Failed to copy compressed:', error);
+      showFeedback('compress', 'error');
     }
   };
 
@@ -887,17 +892,17 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
             onClick={() => handleCopyCompressed(selectedValue)}
-            className={`btn ${copied === 'compress' ? 'btn-primary' : 'btn-default'}`}
+            className={`btn ${feedback?.action === 'compress' ? (feedback.status === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white') : 'btn-default'}`}
             title="复制压缩格式"
           >
-            {copied === 'compress' ? 'Copied!' : 'Compress'}
+            {feedback?.action === 'compress' ? (feedback.status === 'success' ? 'Copied!' : 'Failed') : 'Compress'}
           </button>
           <button
             onClick={() => handleCopy(selectedValue)}
-            className={`btn ${copied === 'copy' ? 'btn-primary' : 'btn-default'}`}
+            className={`btn ${feedback?.action === 'copy' ? (feedback.status === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white') : 'btn-default'}`}
             title="复制格式化JSON"
           >
-            {copied === 'copy' ? 'Copied!' : 'Copy'}
+            {feedback?.action === 'copy' ? (feedback.status === 'success' ? 'Copied!' : 'Failed') : 'Copy'}
           </button>
           <div className="w-px h-4 bg-slate-300" />
           <button
