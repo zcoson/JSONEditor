@@ -1,9 +1,12 @@
-import { memo, useState, useRef, useEffect, useMemo } from 'react';
+import { memo, useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type { JsonValue } from '../utils/jsonUtils';
 import { getValueType, getValueAtPath } from '../utils/jsonUtils';
 import { AutoResizeTextarea } from './AutoResizeTextarea';
+
+// Pagination configuration
+const PAGE_SIZE = 50; // Items per page
 
 // JSON syntax highlighter - memoized result type
 interface HighlightCache {
@@ -274,10 +277,44 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
 }
 
 function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: ArrayEditorProps) {
+  // Pagination state
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  // Reset visible count when value changes
+  const prevValueRef = useRef(value);
+  if (prevValueRef.current !== value) {
+    prevValueRef.current = value;
+    setVisibleCount(PAGE_SIZE);
+  }
+
   // Check if all items are objects with same keys for table view
   const isTableMode = value.length > 0 && value.every(
     (item) => typeof item === 'object' && item !== null && !Array.isArray(item)
   );
+
+  // Use IntersectionObserver to detect when bottom is visible
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting && visibleCount < value.length) {
+          setVisibleCount(prev => Math.min(prev + PAGE_SIZE, value.length));
+        }
+      },
+      { rootMargin: '100px' }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [visibleCount, value.length]);
+
+  // Visible items
+  const visibleItems = value.slice(0, visibleCount);
+  const hasMore = visibleCount < value.length;
 
   if (isTableMode) {
     const allKeys = new Set<string>();
@@ -310,7 +347,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
             </tr>
           </thead>
           <tbody>
-            {value.map((item, index) => (
+            {visibleItems.map((item, index) => (
               <tr key={index} className="hover:bg-slate-50 transition-colors group">
                 <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{index}</td>
                 {keys.map((key, keyIndex) => (
@@ -349,6 +386,11 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
             ))}
           </tbody>
         </table>
+        {hasMore && (
+          <div ref={loadMoreRef} className="text-center py-2 text-slate-400 text-xs">
+            已加载 {visibleCount} / {value.length} 项，下拉加载更多...
+          </div>
+        )}
         <button
           onClick={() => onInsert(path, value.length, createEmptyItem())}
           className="btn btn-success mt-2"
@@ -374,7 +416,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
           </tr>
         </thead>
         <tbody>
-          {value.map((item, index) => (
+          {visibleItems.map((item, index) => (
             <tr key={index} className="hover:bg-slate-50 transition-colors">
               <td className="border-b border-r border-slate-200 px-2 py-1.5 text-slate-400 whitespace-nowrap text-xs font-mono">{index}</td>
               <td className="border-b border-r border-slate-200 px-2 py-1.5 min-w-0">
@@ -411,6 +453,11 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
           ))}
         </tbody>
       </table>
+      {hasMore && (
+        <div ref={loadMoreRef} className="text-center py-2 text-slate-400 text-xs">
+          已加载 {visibleCount} / {value.length} 项，下拉加载更多...
+        </div>
+      )}
       <button
         onClick={() => onInsert(path, value.length, null)}
         className="btn btn-success mt-2"
