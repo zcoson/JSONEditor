@@ -134,6 +134,20 @@ function App() {
     }
   }, [loadJson]);
 
+  // Handle reset - reset to original content
+  const handleReset = useCallback(() => {
+    reset();
+    setSelectedPath([]);
+    setNestedPaths([]);
+  }, [reset, setSelectedPath]);
+
+  // Handle clear - reset all state to initial
+  const handleClear = useCallback(() => {
+    clear();
+    setNestedPaths([]);
+    setColumns([]);
+  }, [clear]);
+
   // Listen for menu events
   useEffect(() => {
     const unlistenOpen = listen('menu-open', async () => {
@@ -742,8 +756,8 @@ function App() {
         onLoadJson={loadJson}
         onOpenFile={handleOpenFile}
         onSave={handleSave}
-        onClear={clear}
-        onReset={reset}
+        onClear={handleClear}
+        onReset={handleReset}
         onUndo={undo}
         canUndo={canUndo}
         hasOriginal={hasOriginal}

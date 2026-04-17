@@ -159,7 +159,7 @@ export function useJsonState(): UseJsonStateReturn {
     // Clear history on reset
     historyRef.current = [];
     setCanUndo(false);
-    // Don't reset selectedPath - keep current panels open
+    // selectedPath and nestedPaths are cleared at App level
   }, [originalContent]);
 
   return {
