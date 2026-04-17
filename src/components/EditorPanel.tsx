@@ -682,6 +682,12 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+        // If focus is on an input or textarea, let browser handle it natively
+        const activeElement = document.activeElement;
+        if (activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement) {
+          return; // Let browser's native select all work
+        }
+
         // In preview mode, select all in preview
         if (mode === 'preview') {
           e.preventDefault();
