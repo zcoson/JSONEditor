@@ -286,13 +286,28 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
   // Check if we should use virtual scrolling
   const useVirtualScrolling = value.length >= VIRTUAL_THRESHOLD;
 
-  // Reset indices when value changes
-  const prevValueRef = useRef(value);
-  if (prevValueRef.current !== value) {
-    prevValueRef.current = value;
-    if (value.length >= VIRTUAL_THRESHOLD) {
-      setStartIndex(0);
-      setEndIndex(Math.min(PAGE_SIZE, value.length));
+  // Adjust indices only when array length changes
+  const prevLengthRef = useRef(value.length);
+  if (prevLengthRef.current !== value.length) {
+    const oldLength = prevLengthRef.current;
+    const newLength = value.length;
+    prevLengthRef.current = newLength;
+
+    if (newLength >= VIRTUAL_THRESHOLD) {
+      if (newLength < oldLength) {
+        // Items deleted - adjust indices to stay valid
+        setEndIndex((prev) => Math.min(prev, newLength));
+        setStartIndex((prev) => Math.min(prev, Math.max(0, newLength - PAGE_SIZE)));
+      } else if (newLength > oldLength) {
+        // Items added - extend window to show new items
+        setEndIndex((prev) => {
+          // If viewing near the end, extend to include new items
+          if (prev >= oldLength - PAGE_SIZE) {
+            return newLength;
+          }
+          return prev;
+        });
+      }
     }
   }
 
@@ -321,7 +336,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
       const clientHeight = 'clientHeight' in scrollParent! ? scrollParent.clientHeight : window.innerHeight;
 
       // Load more at bottom
-      if (scrollTop + clientHeight >= scrollHeight - 100 && endIndex < value.length) {
+      if (scrollTop + clientHeight >= scrollHeight - 3 && endIndex < value.length) {
         setEndIndex((prev) => {
           const newEnd = Math.min(prev + PAGE_SIZE, value.length);
           if (newEnd - startIndex > PAGE_SIZE * 2) {
@@ -332,7 +347,7 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
       }
 
       // Load more at top
-      if (scrollTop <= 100 && startIndex > 0) {
+      if (scrollTop <= 3 && startIndex > 0) {
         setStartIndex((prev) => {
           const newStart = Math.max(prev - PAGE_SIZE, 0);
           if (endIndex - newStart > PAGE_SIZE * 2) {
@@ -351,10 +366,18 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
   // Simple pagination for non-virtual mode
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const simplePrevLengthRef = useRef(value.length);
 
-  // Reset visible count when value changes (for simple pagination)
-  if (!useVirtualScrolling && prevValueRef.current !== value) {
-    setVisibleCount(PAGE_SIZE);
+  // Adjust visible count when array length changes (for simple pagination)
+  if (!useVirtualScrolling) {
+    const oldLength = simplePrevLengthRef.current;
+    if (oldLength !== value.length) {
+      simplePrevLengthRef.current = value.length;
+      // Only reset if length decreased
+      if (value.length < oldLength) {
+        setVisibleCount(Math.min(PAGE_SIZE, value.length));
+      }
+    }
   }
 
   // IntersectionObserver for non-virtual mode
@@ -605,8 +628,11 @@ function ArrayEditor({ value, path, onUpdate, onInsert, onRemove, fontSize }: Ar
       </table>
       {useVirtualScrolling ? (
         hasMore && (
-          <div className="text-center py-2 text-slate-400 text-xs">
-            下拉加载更多... (显示 {startIndex} - {endIndex} / {value.length} 项)
+          <div
+            onClick={loadNextPage}
+            className="text-center py-2 text-slate-400 text-xs cursor-pointer hover:bg-slate-100 hover:text-slate-600"
+          >
+            点击加载下一页... (显示 {startIndex} - {endIndex} / {value.length} 项)
           </div>
         )
       ) : (
