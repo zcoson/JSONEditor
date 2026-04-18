@@ -6,6 +6,13 @@ interface AutoResizeTextareaProps {
   fontSize?: number;
 }
 
+// Convert smart quotes to regular quotes
+export function normalizeQuotes(text: string): string {
+  return text
+    .replace(/[\u2018\u2019]/g, "'")  // ' ' → '
+    .replace(/[\u201C\u201D]/g, '"');  // " " → "
+}
+
 export const AutoResizeTextarea = forwardRef<HTMLTextAreaElement, AutoResizeTextareaProps>(
   function AutoResizeTextarea({ value, onChange, fontSize }, forwardedRef) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -52,12 +59,14 @@ export const AutoResizeTextarea = forwardRef<HTMLTextAreaElement, AutoResizeText
         onChange={(e) => {
           const el = e.target;
           isEditingRef.current = true;
+          // Normalize smart quotes to regular quotes
+          const normalizedValue = normalizeQuotes(el.value);
           // Save cursor position before onChange triggers re-render
           selectionRef.current = {
             start: el.selectionStart,
             end: el.selectionEnd,
           };
-          onChange(el.value);
+          onChange(normalizedValue);
         }}
         onBlur={() => {
           isEditingRef.current = false;

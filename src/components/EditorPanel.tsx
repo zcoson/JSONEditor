@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type { JsonValue } from '../utils/jsonUtils';
 import { getValueType, getValueAtPath } from '../utils/jsonUtils';
-import { AutoResizeTextarea } from './AutoResizeTextarea';
+import { AutoResizeTextarea, normalizeQuotes } from './AutoResizeTextarea';
 
 // Pagination configuration
 const PAGE_SIZE = 50; // Items per page
@@ -136,7 +136,8 @@ function ValueEditor({
     } else if (type === 'boolean') {
       newValue = (e.target as HTMLInputElement).checked;
     } else {
-      newValue = e.target.value;
+      // Normalize smart quotes for string values
+      newValue = normalizeQuotes(e.target.value);
     }
     onUpdate(path, newValue);
   };
@@ -341,7 +342,7 @@ function ObjectEditor({ value, path, onUpdate, onAddProperty, onRemoveProperty, 
           <input
             type="text"
             value={newKey}
-            onChange={(e) => setNewKey(e.target.value)}
+            onChange={(e) => setNewKey(normalizeQuotes(e.target.value))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 handleAdd();
@@ -1031,7 +1032,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
             <input
               type="text"
               value={filterExpr}
-              onChange={(e) => setFilterExpr(e.target.value.trimStart())}
+              onChange={(e) => setFilterExpr(normalizeQuotes(e.target.value.trimStart()))}
               placeholder="e.g. groupBy(root, x => x.status), unique(root.map(x => x.category)), root.filter(x => x.active), sum(root.map(x => x.price))"
               className="input flex-1 font-mono"
             />

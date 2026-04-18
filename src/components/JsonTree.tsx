@@ -1,6 +1,7 @@
 import { useState, memo, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { JsonValue } from '../utils/jsonUtils';
 import { getValueType } from '../utils/jsonUtils';
+import { normalizeQuotes } from './AutoResizeTextarea';
 
 interface JsonTreeProps {
   value: JsonValue | null;
@@ -418,7 +419,7 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
           type="text"
           placeholder="Search... (⌘F)"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => setSearchTerm(normalizeQuotes(e.target.value))}
           className="flex-1 text-xs bg-[var(--bg-primary)] border border-[var(--border-light)] rounded px-2 outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] h-8 text-[var(--text-primary)]"
         />
         {searchTerm && (
