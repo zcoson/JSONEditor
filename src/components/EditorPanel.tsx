@@ -819,6 +819,24 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
         return { result: null, error: 'Expression too long (max 500 chars)' };
       }
 
+      // Security: check for potentially dangerous patterns
+      const dangerousPatterns = [
+        /eval\s*\(/i,
+        /Function\s*\(/i,
+        /constructor/i,
+        /__proto__/i,
+        /prototype/i,
+        /process\s*\(/i,
+        /require\s*\(/i,
+        /import\s*\(/i,
+      ];
+
+      for (const pattern of dangerousPatterns) {
+        if (pattern.test(filterExpr)) {
+          return { result: null, error: 'Expression contains forbidden pattern' };
+        }
+      }
+
       try {
         // Helper functions for statistics with better precision
         // Convert value to number, handling null/undefined
@@ -832,6 +850,11 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
         // Kahan-Babuska-Neumaier summation algorithm for better floating point precision
         // This is an improvement over Kahan's algorithm
         const sum = (arr: unknown[]) => {
+          // Safety: limit array size
+          if (!Array.isArray(arr) || arr.length > 1000000) {
+            console.warn('Array too large for sum operation');
+            return 0;
+          }
           let s = 0;
           let c = 0; // compensation
           for (const b of arr) {
@@ -847,23 +870,30 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
           return s + c;
         };
         const avg = (arr: unknown[]) => {
+          if (!Array.isArray(arr)) return 0;
           const validNums = arr.filter(b => b !== null && b !== undefined);
           if (!validNums.length) return 0;
           return sum(validNums) / validNums.length;
         };
-        const count = (arr: unknown[]) => arr.length;
+        const count = (arr: unknown[]) => Array.isArray(arr) ? arr.length : 0;
         const min = (arr: unknown[]) => {
+          if (!Array.isArray(arr)) return 0;
           const nums = arr.map(toNum).filter(n => !isNaN(n));
           if (!nums.length) return 0;
-          return Math.min(...nums);
+          return Math.min(...nums.slice(0, 1000000)); // Limit for spread
         };
         const max = (arr: unknown[]) => {
+          if (!Array.isArray(arr)) return 0;
           const nums = arr.map(toNum).filter(n => !isNaN(n));
           if (!nums.length) return 0;
-          return Math.max(...nums);
+          return Math.max(...nums.slice(0, 1000000)); // Limit for spread
         };
-        const unique = (arr: unknown[]) => [...new Set(arr)];
+        const unique = (arr: unknown[]) => {
+          if (!Array.isArray(arr)) return [];
+          return [...new Set(arr)];
+        };
         const groupBy = (arr: Record<string, unknown>[], key: string | ((item: Record<string, unknown>) => string)) => {
+          if (!Array.isArray(arr)) return {};
           const result: Record<string, Record<string, unknown>[]> = {};
           for (const item of arr) {
             const k = typeof key === 'function' ? key(item) : String(item[key]);
@@ -896,10 +926,18 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
           return { result: null, error: 'Result is a function, not JSON data' };
         }
 
-        // Try to serialize to validate it's valid JSON
-        const serialized = JSON.stringify(result);
-        if (serialized === undefined) {
-          return { result: null, error: 'Result cannot be serialized to JSON' };
+        // Try to serialize to validate it's valid JSON (with size limit)
+        try {
+          const serialized = JSON.stringify(result);
+          if (serialized === undefined) {
+            return { result: null, error: 'Result cannot be serialized to JSON' };
+          }
+          // Limit result size to 10MB
+          if (serialized.length > 10 * 1024 * 1024) {
+            return { result: null, error: 'Result too large (max 10MB)' };
+          }
+        } catch {
+          return { result: null, error: 'Result contains circular reference' };
         }
 
         return { result, error: null };

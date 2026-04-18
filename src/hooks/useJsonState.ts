@@ -36,11 +36,16 @@ export function useJsonState(): UseJsonStateReturn {
   const [canUndo, setCanUndo] = useState(false);
 
   const loadJson = useCallback((content: string, path?: string) => {
-    console.log('loadJson called with path:', path);
+    // Safety check: limit content size
+    if (content.length > 50 * 1024 * 1024) {
+      setError('Content too large (max 50MB)');
+      setJsonValue(null);
+      return;
+    }
+
     setRawContent(content);
     setOriginalContent(content);
     if (path) {
-      console.log('Setting filePath to:', path);
       setFilePath(path);
     }
     try {

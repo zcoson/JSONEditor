@@ -10,6 +10,9 @@ export interface JsonNode {
   expanded?: boolean;
 }
 
+// Maximum content size for parsing: 50MB
+const MAX_CONTENT_SIZE = 50 * 1024 * 1024;
+
 export function getValueType(value: JsonValue): JsonNode['type'] {
   if (value === null) return 'null';
   if (Array.isArray(value)) return 'array';
@@ -18,6 +21,12 @@ export function getValueType(value: JsonValue): JsonNode['type'] {
 }
 
 export function parseJson(content: string): JsonValue | null {
+  // Safety check: limit content size
+  if (content.length > MAX_CONTENT_SIZE) {
+    console.warn('Content too large to parse safely');
+    return null;
+  }
+
   try {
     return JSON.parse(content);
   } catch {

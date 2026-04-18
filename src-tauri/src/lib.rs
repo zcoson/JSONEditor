@@ -1,7 +1,11 @@
 use std::fs;
 use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, menu::{Menu, MenuItem, Submenu, PredefinedMenuItem, AboutMetadata, IsMenuItem}};
+
+// Maximum file size: 50MB
+const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileInfo {
@@ -14,12 +18,39 @@ struct PendingFile(Arc<Mutex<Option<String>>>);
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| e.to_string())
+    // Validate path - prevent null bytes and ensure it's a valid path
+    if path.contains('\0') {
+        return Err("Invalid path: contains null byte".to_string());
+    }
+
+    let path_buf = PathBuf::from(&path);
+
+    // Check file exists and get metadata
+    let metadata = fs::metadata(&path_buf)
+        .map_err(|e| format!("Cannot access file: {}", e))?;
+
+    // Check file size
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(format!("File too large: {} bytes (max {} bytes)", metadata.len(), MAX_FILE_SIZE));
+    }
+
+    fs::read_to_string(&path_buf).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn write_file(path: String, content: String) -> Result<(), String> {
-    fs::write(&path, content).map_err(|e| e.to_string())
+    // Validate path - prevent null bytes
+    if path.contains('\0') {
+        return Err("Invalid path: contains null byte".to_string());
+    }
+
+    // Check content size
+    if content.len() as u64 > MAX_FILE_SIZE {
+        return Err(format!("Content too large: {} bytes (max {} bytes)", content.len(), MAX_FILE_SIZE));
+    }
+
+    let path_buf = PathBuf::from(&path);
+    fs::write(&path_buf, content).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
