@@ -1,9 +1,31 @@
-import { memo, useState, useRef, useEffect, useMemo } from 'react';
+import { memo, useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from 'react';
 import type { ReactNode } from 'react';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type { JsonValue } from '../utils/jsonUtils';
 import { getValueType, getValueAtPath } from '../utils/jsonUtils';
 import { AutoResizeTextarea, normalizeQuotes } from './AutoResizeTextarea';
+
+// Extract property names from a value (for autocomplete)
+function extractPropertyNames(value: JsonValue): string[] {
+  if (value === null || value === undefined) return [];
+
+  // If array, get properties from first item
+  if (Array.isArray(value)) {
+    if (value.length === 0) return [];
+    const firstItem = value[0];
+    if (typeof firstItem === 'object' && firstItem !== null && !Array.isArray(firstItem)) {
+      return Object.keys(firstItem);
+    }
+    return [];
+  }
+
+  // If object, get its keys
+  if (typeof value === 'object') {
+    return Object.keys(value);
+  }
+
+  return [];
+}
 
 // Pagination configuration
 const PAGE_SIZE = 50; // Items per page
@@ -687,6 +709,11 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
   const [mode, setMode] = useState<'edit' | 'preview'>(lastEditorMode);
   const [feedback, setFeedback] = useState<{ action: string; status: 'success' | 'error' } | null>(null);
   const [filterExpr, setFilterExpr] = useState('');
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
+  const [autocompleteIndex, setAutocompleteIndex] = useState(0);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const filterInputRef = useRef<HTMLInputElement>(null);
+  const filterCursorPosRef = useRef<number | null>(null);
   const previewRef = useRef<HTMLPreElement>(null);
   const singleValuePreviewRef = useRef<HTMLSpanElement>(null);
   const singleValueInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -949,6 +976,113 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
     };
   }, [filterExpr]);
 
+  // Autocomplete logic
+  const getPropertySuggestions = useCallback((expr: string, cursorPos: number): string[] => {
+    // Find patterns like "x." or "item." where we need to suggest properties
+    // Look for the pattern: variable name followed by dot, not followed by anything or partially typed
+    const beforeCursor = expr.slice(0, cursorPos);
+
+    // Match patterns like "x.", "item.", "el.", etc. (common lambda parameter names)
+    const dotMatch = beforeCursor.match(/(\w+)\.(\w*)$/);
+    if (!dotMatch) return [];
+
+    const [, , partial] = dotMatch;
+
+    // Get properties from the selected value (for array items, use first item)
+    const props = extractPropertyNames(selectedValue);
+
+    // Filter by partial match and exclude already typed
+    return props
+      .filter(p => p.startsWith(partial) && p !== partial)
+      .slice(0, 10); // Limit to 10 suggestions
+  }, [selectedValue]);
+
+  const handleFilterChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const cursorPos = input.selectionStart || 0;
+
+    // Handle trimStart: adjust cursor if leading spaces were removed
+    const originalValue = input.value;
+    const trimmedValue = originalValue.trimStart();
+    const trimmedChars = originalValue.length - trimmedValue.length;
+    const adjustedCursorPos = Math.max(0, cursorPos - trimmedChars);
+
+    const newValue = normalizeQuotes(trimmedValue);
+    setFilterExpr(newValue);
+
+    // Save cursor position for restoration
+    filterCursorPosRef.current = adjustedCursorPos;
+
+    const suggestions = getPropertySuggestions(newValue, adjustedCursorPos);
+    setAutocompleteSuggestions(suggestions);
+    setAutocompleteIndex(0);
+    setShowAutocomplete(suggestions.length > 0);
+  }, [getPropertySuggestions]);
+
+  // Restore cursor position after filter expression change
+  useLayoutEffect(() => {
+    const input = filterInputRef.current;
+    const pos = filterCursorPosRef.current;
+    if (input !== null && pos !== null) {
+      input.setSelectionRange(pos, pos);
+      filterCursorPosRef.current = null;
+    }
+  });
+
+  const handleFilterKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showAutocomplete || autocompleteSuggestions.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setAutocompleteIndex(prev => (prev + 1) % autocompleteSuggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setAutocompleteIndex(prev => (prev - 1 + autocompleteSuggestions.length) % autocompleteSuggestions.length);
+    } else if (e.key === 'Tab' || e.key === 'Enter') {
+      e.preventDefault();
+      // Insert selected suggestion
+      const suggestion = autocompleteSuggestions[autocompleteIndex];
+      const cursorPos = filterInputRef.current?.selectionStart || filterExpr.length;
+      const beforeCursor = filterExpr.slice(0, cursorPos);
+      const afterCursor = filterExpr.slice(cursorPos);
+
+      // Find the dot and partial property name
+      const dotMatch = beforeCursor.match(/(\w+)\.(\w*)$/);
+      if (dotMatch) {
+        const prefix = beforeCursor.slice(0, -dotMatch[2].length);
+        setFilterExpr(prefix + suggestion + afterCursor);
+        setShowAutocomplete(false);
+        // Focus back to input after state update
+        setTimeout(() => {
+          const newCursorPos = prefix.length + suggestion.length;
+          filterInputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+          filterInputRef.current?.focus();
+        }, 0);
+      }
+    } else if (e.key === 'Escape') {
+      setShowAutocomplete(false);
+    }
+  }, [showAutocomplete, autocompleteSuggestions, autocompleteIndex, filterExpr]);
+
+  const handleSuggestionClick = useCallback((suggestion: string) => {
+    const cursorPos = filterInputRef.current?.selectionStart || filterExpr.length;
+    const beforeCursor = filterExpr.slice(0, cursorPos);
+    const afterCursor = filterExpr.slice(cursorPos);
+
+    const dotMatch = beforeCursor.match(/(\w+)\.(\w*)$/);
+    if (dotMatch) {
+      const prefix = beforeCursor.slice(0, -dotMatch[2].length);
+      const newExpr = prefix + suggestion + afterCursor;
+      setFilterExpr(newExpr);
+      setShowAutocomplete(false);
+      setTimeout(() => {
+        const newCursorPos = prefix.length + suggestion.length;
+        filterInputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+        filterInputRef.current?.focus();
+      }, 0);
+    }
+  }, [filterExpr]);
+
   if (rootValue === null) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
@@ -1027,15 +1161,35 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
       </div>
       {mode === 'preview' && isComplex && (
         <div className="px-3 py-1 border-b border-[var(--border-light)] bg-[var(--bg-secondary)]">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 relative">
             <span className="text-xs text-[var(--text-secondary)] font-medium flex-shrink-0">Filter:</span>
             <input
+              ref={filterInputRef}
               type="text"
               value={filterExpr}
-              onChange={(e) => setFilterExpr(normalizeQuotes(e.target.value.trimStart()))}
+              onChange={handleFilterChange}
+              onKeyDown={handleFilterKeyDown}
+              onBlur={() => setTimeout(() => setShowAutocomplete(false), 200)}
               placeholder="e.g. groupBy(root, x => x.status), unique(root.map(x => x.category)), root.filter(x => x.active), sum(root.map(x => x.price))"
               className="input flex-1 font-mono"
             />
+            {showAutocomplete && autocompleteSuggestions.length > 0 && (
+              <div className="absolute left-[3.5rem] top-full mt-0.5 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded shadow-lg z-50 max-h-48 overflow-auto min-w-[150px]">
+                {autocompleteSuggestions.map((suggestion, idx) => (
+                  <div
+                    key={suggestion}
+                    className={`px-2 py-1 text-xs font-mono cursor-pointer ${
+                      idx === autocompleteIndex
+                        ? 'bg-[var(--primary)] text-white'
+                        : 'hover:bg-[var(--bg-tertiary)]'
+                    }`}
+                    onClick={() => handleSuggestionClick(suggestion)}
+                  >
+                    {suggestion}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           {filteredResult.error && (
             <div className="text-xs text-red-500 mt-1 flex items-center gap-1">
