@@ -989,7 +989,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
     const [, , partial] = dotMatch;
 
     // Get properties from the selected value (for array items, use first item)
-    const props = extractPropertyNames(selectedValue);
+    const props = selectedValue !== undefined ? extractPropertyNames(selectedValue) : [];
 
     // Filter by partial match and exclude already typed
     return props
