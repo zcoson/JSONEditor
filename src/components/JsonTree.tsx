@@ -124,7 +124,7 @@ function highlightText(text: string, searchTerm: string): React.ReactNode {
   return (
     <>
       {before}
-      <span className="bg-yellow-200 text-yellow-900 rounded px-0.5">{match}</span>
+      <span className="bg-[var(--search-highlight-bg)] text-[var(--search-highlight-text)] rounded px-0.5">{match}</span>
       {after}
     </>
   );
@@ -198,17 +198,17 @@ const TreeNode = memo(function TreeNode({
         ref={isSelected ? selectedNodeRef : null}
         className={`flex items-center py-1 px-2 rounded-md cursor-pointer whitespace-nowrap transition-colors ${
           isSelected
-            ? 'bg-blue-50 border border-blue-200'
+            ? 'bg-[var(--selection-bg)] border border-[var(--selection-border)]'
             : isMatched
-            ? 'bg-yellow-50 hover:bg-yellow-100'
-            : 'hover:bg-slate-50'
+            ? 'bg-[var(--bg-tertiary)] hover:bg-[var(--border-light)]'
+            : 'hover:bg-[var(--bg-secondary)]'
         }`}
         style={{ paddingLeft: depth * 16 + 8 }}
         onClick={handleClick}
       >
         {isExpandable && (
           <span
-            className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 mr-1 cursor-pointer hover:bg-slate-200 rounded transition-colors"
+            className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-[var(--text-muted)] mr-1 cursor-pointer hover:bg-[var(--bg-tertiary)] rounded transition-colors"
             onClick={handleToggle}
           >
             {isExpanded ? (
@@ -223,19 +223,19 @@ const TreeNode = memo(function TreeNode({
           </span>
         )}
         {!isExpandable && <span className="w-4 flex-shrink-0 mr-1" />}
-        <span className="font-semibold text-blue-600 truncate">{highlightText(nodeKey, searchTerm)}</span>
-        <span className="text-slate-400 mx-1 flex-shrink-0">:</span>
+        <span className="font-semibold text-[var(--syntax-key)] truncate">{highlightText(nodeKey, searchTerm)}</span>
+        <span className="text-[var(--text-muted)] mx-1 flex-shrink-0">:</span>
         <span
           className={`truncate ${
             type === 'string'
-              ? 'text-green-600'
+              ? 'text-[var(--syntax-string)]'
               : type === 'number'
-              ? 'text-purple-600'
+              ? 'text-[var(--syntax-number)]'
               : type === 'boolean'
-              ? 'text-rose-600'
+              ? 'text-[var(--syntax-boolean)]'
               : type === 'null'
-              ? 'text-slate-400 italic'
-              : 'text-slate-500'
+              ? 'text-[var(--syntax-null)] italic'
+              : 'text-[var(--text-muted)]'
           }`}
         >
           {highlightText(getValuePreview(), searchTerm)}
@@ -396,12 +396,12 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
 
   if (value === null) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+      <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
         <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         <span className="text-sm">No JSON loaded</span>
-        <span className="text-xs text-slate-300">Paste or drop a JSON file to begin</span>
+        <span className="text-xs text-[var(--text-muted)]">Paste or drop a JSON file to begin</span>
       </div>
     );
   }
@@ -409,8 +409,8 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Search bar */}
-      <div className="flex items-center gap-2 py-1 px-3 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
-        <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex items-center gap-2 py-1 px-3 border-b border-[var(--border-light)] bg-gradient-to-r from-[var(--gradient-from)] to-[var(--gradient-to)] flex-shrink-0">
+        <svg className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
         <input
@@ -419,11 +419,11 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
           placeholder="Search... (⌘F)"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 h-8"
+          className="flex-1 text-xs bg-[var(--bg-primary)] border border-[var(--border-light)] rounded px-2 outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] h-8 text-[var(--text-primary)]"
         />
         {searchTerm && (
           <>
-            <span className="text-xs text-slate-500 flex-shrink-0 tabular-nums">
+            <span className="text-xs text-[var(--text-secondary)] flex-shrink-0 tabular-nums">
               {matchedPathsArray.length > 0
                 ? `${currentMatchIndex + 1}/${matchedPathsArray.length}`
                 : 'No match'}
@@ -433,7 +433,7 @@ export function JsonTree({ value, selectedPath, onSelect }: JsonTreeProps) {
                 setSearchTerm('');
                 setCurrentMatchIndex(0);
               }}
-              className="text-slate-400 hover:text-slate-600 flex-shrink-0"
+              className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] flex-shrink-0"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

@@ -71,7 +71,7 @@ export function ResizablePanels({ layout, leftPanel, rightPanel }: ResizablePane
           layout === 'vertical'
             ? 'h-1 cursor-row-resize'
             : 'w-1 cursor-col-resize'
-        } bg-gray-200 hover:bg-blue-400 transition-colors flex-shrink-0`}
+        } bg-[var(--border-light)] hover:bg-[var(--primary)] transition-colors flex-shrink-0`}
         onMouseDown={handleMouseDown}
       />
 

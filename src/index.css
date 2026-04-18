@@ -15,26 +15,74 @@
   --danger: #ef4444;
   --warning: #f59e0b;
 
-  /* Background colors */
+  /* Background colors - Light */
   --bg-primary: #ffffff;
   --bg-secondary: #f8fafc;
   --bg-tertiary: #f1f5f9;
 
-  /* Border colors */
+  /* Border colors - Light */
   --border-light: #e2e8f0;
   --border-default: #cbd5e1;
 
-  /* Text colors */
+  /* Text colors - Light */
   --text-primary: #1e293b;
   --text-secondary: #64748b;
   --text-muted: #94a3b8;
 
-  /* Syntax colors */
+  /* Syntax colors - Light */
   --syntax-key: #0066cc;
   --syntax-string: #22863a;
   --syntax-number: #7938e6;
   --syntax-boolean: #d73a49;
   --syntax-null: #6e7781;
+
+  /* Panel header gradient - Light */
+  --gradient-from: #f8fafc;
+  --gradient-to: #ffffff;
+
+  /* Selection highlight */
+  --selection-bg: #eff6ff;
+  --selection-border: #bfdbfe;
+
+  /* Search highlight */
+  --search-highlight-bg: #fef08a;
+  --search-highlight-text: #854d0e;
+}
+
+/* Dark theme */
+.dark {
+  /* Background colors - Dark */
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+
+  /* Border colors - Dark */
+  --border-light: #334155;
+  --border-default: #475569;
+
+  /* Text colors - Dark */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  /* Syntax colors - Dark */
+  --syntax-key: #79b8ff;
+  --syntax-string: #85e89d;
+  --syntax-number: #b392f0;
+  --syntax-boolean: #f97583;
+  --syntax-null: #6e7681;
+
+  /* Panel header gradient - Dark */
+  --gradient-from: #1e293b;
+  --gradient-to: #0f172a;
+
+  /* Selection highlight - Dark */
+  --selection-bg: #1e3a5f;
+  --selection-border: #3b82f6;
+
+  /* Search highlight - Dark */
+  --search-highlight-bg: #854d0e;
+  --search-highlight-text: #fef08a;
 }
 
 body {
@@ -115,17 +163,17 @@ body {
 }
 
 .btn-success {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--bg-tertiary);
+  color: var(--success);
 }
 
 .btn-success:hover:not(:disabled) {
-  background: #bbf7d0;
+  background: var(--border-light);
 }
 
 .btn-danger {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--bg-tertiary);
+  color: var(--danger);
 }
 
 .btn-row-action {
@@ -133,7 +181,7 @@ body {
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #fecaca;
+  background: var(--border-light);
 }
 
 /* Input styles */
@@ -142,7 +190,8 @@ body {
   font-size: 0.75rem;
   border: 1px solid var(--border-default);
   border-radius: 6px;
-  background: white;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 

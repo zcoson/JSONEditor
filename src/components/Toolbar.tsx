@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
+import type { Theme } from '../hooks/useTheme';
+
 interface ToolbarProps {
   rawContent: string;
   filePath: string | null;
@@ -17,9 +19,11 @@ interface ToolbarProps {
   onLayoutChange: (layout: 'horizontal' | 'vertical') => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
 }
 
-export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, onClear, onReset, onUndo, canUndo, hasOriginal, layout, onLayoutChange, fontSize, onFontSizeChange }: ToolbarProps) {
+export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, onClear, onReset, onUndo, canUndo, hasOriginal, layout, onLayoutChange, fontSize, onFontSizeChange, theme, onThemeChange }: ToolbarProps) {
   const [feedback, setFeedback] = useState<{ action: string; status: 'success' | 'error' } | null>(null);
 
   const showFeedback = (action: string, status: 'success' | 'error' = 'success') => {
@@ -92,6 +96,10 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
     showFeedback('layout');
   };
 
+  const handleThemeToggle = () => {
+    onThemeChange(theme === 'light' ? 'dark' : 'light');
+  };
+
   const handleZoomIn = () => {
     onFontSizeChange(Math.min(fontSize + 1, 24));
   };
@@ -101,25 +109,25 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 py-0.5 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200 shadow-sm">
+    <div className="flex items-center gap-2 px-3 py-0.5 bg-gradient-to-r from-[var(--gradient-from)] to-[var(--bg-tertiary)] border-b border-[var(--border-light)] shadow-sm">
       {/* File path and open button on the left */}
-      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white rounded-md border border-slate-200 text-xs text-slate-600 max-w-xs">
-        <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[var(--bg-primary)] rounded-md border border-[var(--border-light)] text-xs text-[var(--text-secondary)] max-w-xs">
+        <svg className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         {filePath ? (
           <span className="truncate flex-1" title={filePath}>{getFileName(filePath)}</span>
         ) : (
-          <span className="text-slate-400 flex-1">No file</span>
+          <span className="text-[var(--text-muted)] flex-1">No file</span>
         )}
-        <button onClick={onOpenFile} className="p-0.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0" title="Open file">
+        <button onClick={onOpenFile} className="p-0.5 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex-shrink-0" title="Open file">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
           </svg>
         </button>
       </div>
 
-      <div className="w-px h-5 bg-slate-300" />
+      <div className="w-px h-5 bg-[var(--border-default)]" />
 
       <button
         onClick={handlePaste}
@@ -165,7 +173,7 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
         {feedback?.action === 'clear' ? 'Cleared!' : 'Clear'}
       </button>
 
-      <div className="w-px h-5 bg-slate-300" />
+      <div className="w-px h-5 bg-[var(--border-default)]" />
 
       <button
         onClick={handleCopyCompressed}
@@ -203,25 +211,25 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
 
       <div className="flex-1" />
 
-      <div className="flex items-center gap-1 bg-white rounded-md border border-slate-200 p-0.5">
+      <div className="flex items-center gap-1 bg-[var(--bg-primary)] rounded-md border border-[var(--border-light)] p-0.5">
         <button
           onClick={handleZoomOut}
-          className="px-2 py-1 text-slate-600 hover:bg-slate-100 rounded text-xs transition-colors"
+          className="px-2 py-1 text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] rounded text-xs transition-colors"
           title="Zoom out"
         >
           A−
         </button>
-        <span className="px-1.5 text-xs font-medium text-slate-700 min-w-[2rem] text-center">{fontSize}</span>
+        <span className="px-1.5 text-xs font-medium text-[var(--text-primary)] min-w-[2rem] text-center">{fontSize}</span>
         <button
           onClick={handleZoomIn}
-          className="px-2 py-1 text-slate-600 hover:bg-slate-100 rounded text-xs transition-colors"
+          className="px-2 py-1 text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] rounded text-xs transition-colors"
           title="Zoom in"
         >
           A+
         </button>
       </div>
 
-      <div className="w-px h-5 bg-slate-300" />
+      <div className="w-px h-5 bg-[var(--border-default)]" />
 
       <button
         onClick={handleLayoutToggle}
@@ -235,6 +243,22 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
         ) : (
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 4v16M12 4v16M18 4v16" />
+          </svg>
+        )}
+      </button>
+
+      <button
+        onClick={handleThemeToggle}
+        className="btn btn-default"
+        title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+      >
+        {theme === 'light' ? (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 009 12a9 9 0 009-9c0-.919-.138-1.803-.396-2.646A9 9 0 0112 21a9 9 0 018-5.646z" />
+          </svg>
+        ) : (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
           </svg>
         )}
       </button>
