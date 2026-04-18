@@ -1032,7 +1032,7 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
               type="text"
               value={filterExpr}
               onChange={(e) => setFilterExpr(e.target.value.trimStart())}
-              placeholder="e.g. root.filter(x => x.active), sum(root.map(x => x.price))"
+              placeholder="e.g. groupBy(root, x => x.status), unique(root.map(x => x.category)), root.filter(x => x.active), sum(root.map(x => x.price))"
               className="input flex-1 font-mono"
             />
           </div>
