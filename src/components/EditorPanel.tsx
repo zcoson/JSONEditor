@@ -820,15 +820,48 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
       }
 
       try {
-        // Helper functions for statistics
-        const sum = (arr: (number | string)[]) => arr.reduce((a: number, b) => {
-          const num = typeof b === 'number' ? b : (typeof b === 'string' && !isNaN(Number(b)) ? Number(b) : 0);
-          return a + num;
-        }, 0);
-        const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+        // Helper functions for statistics with better precision
+        // Convert value to number, handling null/undefined
+        const toNum = (b: unknown): number => {
+          if (b === null || b === undefined) return 0;
+          if (typeof b === 'number') return b;
+          if (typeof b === 'string' && !isNaN(Number(b))) return Number(b);
+          return 0;
+        };
+
+        // Kahan-Babuska-Neumaier summation algorithm for better floating point precision
+        // This is an improvement over Kahan's algorithm
+        const sum = (arr: unknown[]) => {
+          let s = 0;
+          let c = 0; // compensation
+          for (const b of arr) {
+            const num = toNum(b);
+            const t = s + num;
+            if (Math.abs(s) >= Math.abs(num)) {
+              c += (s - t) + num;
+            } else {
+              c += (num - t) + s;
+            }
+            s = t;
+          }
+          return s + c;
+        };
+        const avg = (arr: unknown[]) => {
+          const validNums = arr.filter(b => b !== null && b !== undefined);
+          if (!validNums.length) return 0;
+          return sum(validNums) / validNums.length;
+        };
         const count = (arr: unknown[]) => arr.length;
-        const min = (arr: number[]) => arr.length ? Math.min(...arr) : 0;
-        const max = (arr: number[]) => arr.length ? Math.max(...arr) : 0;
+        const min = (arr: unknown[]) => {
+          const nums = arr.map(toNum).filter(n => !isNaN(n));
+          if (!nums.length) return 0;
+          return Math.min(...nums);
+        };
+        const max = (arr: unknown[]) => {
+          const nums = arr.map(toNum).filter(n => !isNaN(n));
+          if (!nums.length) return 0;
+          return Math.max(...nums);
+        };
         const unique = (arr: unknown[]) => [...new Set(arr)];
         const groupBy = (arr: Record<string, unknown>[], key: string | ((item: Record<string, unknown>) => string)) => {
           const result: Record<string, Record<string, unknown>[]> = {};
