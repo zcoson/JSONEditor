@@ -151,6 +151,16 @@ function ValueEditor({
   const type = getValueType(value);
   const strValue = String(value);
 
+  // Local state for number input to preserve cursor position
+  const [localNumberValue, setLocalNumberValue] = useState<string | null>(null);
+
+  // Sync local number value when external value changes
+  useEffect(() => {
+    if (type === 'number') {
+      setLocalNumberValue(strValue);
+    }
+  }, [strValue, type]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     let newValue: JsonValue;
     if (type === 'number') {
@@ -162,6 +172,22 @@ function ValueEditor({
       newValue = normalizeQuotes(e.target.value);
     }
     onUpdate(path, newValue);
+  };
+
+  const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    // Allow valid number input patterns
+    if (inputValue === '' || inputValue === '-' || /^-?\d*\.?\d*$/.test(inputValue)) {
+      setLocalNumberValue(inputValue);
+    }
+  };
+
+  const handleNumberBlur = () => {
+    if (localNumberValue !== null) {
+      const parsed = parseFloat(localNumberValue);
+      const normalized = isNaN(parsed) ? 0 : parsed;
+      onUpdate(path, normalized);
+    }
   };
 
   if (type === 'boolean') {
@@ -227,9 +253,11 @@ function ValueEditor({
   return (
     <input
       ref={singleValueRef as React.RefObject<HTMLInputElement>}
-      type="number"
-      value={strValue}
-      onChange={handleChange}
+      type="text"
+      inputMode="decimal"
+      value={localNumberValue ?? strValue}
+      onChange={handleNumberChange}
+      onBlur={handleNumberBlur}
       className="w-full max-w-md px-1 py-0.5 border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
     />
   );
