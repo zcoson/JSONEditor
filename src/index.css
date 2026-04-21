@@ -9,79 +9,79 @@
   --font-size: 14px;
 
   /* Modern color palette */
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
-  --success: #10b981;
-  --danger: #ef4444;
-  --warning: #f59e0b;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --success: #059669;
+  --danger: #dc2626;
+  --warning: #d97706;
 
   /* Background colors - Light */
   --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #f1f5f9;
+  --bg-secondary: #f1f5f9;
+  --bg-tertiary: #e2e8f0;
 
   /* Border colors - Light */
-  --border-light: #e2e8f0;
-  --border-default: #cbd5e1;
+  --border-light: #cbd5e1;
+  --border-default: #94a3b8;
 
   /* Text colors - Light */
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
 
   /* Syntax colors - Light */
   --syntax-key: #0066cc;
   --syntax-string: #22863a;
-  --syntax-number: #7938e6;
+  --syntax-number: #800080;
   --syntax-boolean: #d73a49;
-  --syntax-null: #6e7781;
+  --syntax-null: #555555;
 
   /* Panel header gradient - Light */
-  --gradient-from: #f8fafc;
+  --gradient-from: #f1f5f9;
   --gradient-to: #ffffff;
 
   /* Selection highlight */
-  --selection-bg: #eff6ff;
-  --selection-border: #bfdbfe;
+  --selection-bg: #dbeafe;
+  --selection-border: #3b82f6;
 
   /* Search highlight */
-  --search-highlight-bg: #fef08a;
-  --search-highlight-text: #854d0e;
+  --search-highlight-bg: #fde047;
+  --search-highlight-text: #713f12;
 }
 
 /* Dark theme */
 .dark {
   /* Background colors - Dark */
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
+  --bg-primary: #020617;
+  --bg-secondary: #0f172a;
+  --bg-tertiary: #1e293b;
 
   /* Border colors - Dark */
-  --border-light: #334155;
-  --border-default: #475569;
+  --border-light: #1e293b;
+  --border-default: #334155;
 
   /* Text colors - Dark */
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
 
   /* Syntax colors - Dark */
-  --syntax-key: #79b8ff;
-  --syntax-string: #85e89d;
-  --syntax-number: #b392f0;
-  --syntax-boolean: #f97583;
-  --syntax-null: #6e7681;
+  --syntax-key: #58a6ff;
+  --syntax-string: #7ee787;
+  --syntax-number: #d2a8ff;
+  --syntax-boolean: #ff7b72;
+  --syntax-null: #8b949e;
 
   /* Panel header gradient - Dark */
-  --gradient-from: #1e293b;
-  --gradient-to: #0f172a;
+  --gradient-from: #0f172a;
+  --gradient-to: #020617;
 
   /* Selection highlight - Dark */
   --selection-bg: #1e3a5f;
   --selection-border: #3b82f6;
 
   /* Search highlight - Dark */
-  --search-highlight-bg: #854d0e;
+  --search-highlight-bg: #a16207;
   --search-highlight-text: #fef08a;
 }
 
