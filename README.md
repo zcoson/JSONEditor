@@ -413,6 +413,16 @@ npm run tauri build -- --target x86_64-apple-darwin
 npm run tauri build -- --target aarch64-apple-darwin
 ```
 
+### 快捷命令
+```bash
+npm run tauri:dev
+```
+
+```bash
+# 仅 macOS Apple Silicon
+npm run tauri build -- --target aarch64-apple-darwin
+```
+
 ### 代码规范
 - 使用 TypeScript 严格模式
 - 遵循 ESLint 规则
