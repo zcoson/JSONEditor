@@ -13,8 +13,11 @@ pub struct FileInfo {
     pub path: String,
 }
 
-// Store for pending file to open (used when app is launched via file double-click)
-struct PendingFile(Arc<Mutex<Option<String>>>);
+// Store for pending files to open (maps window label to file path)
+struct PendingFiles(Arc<Mutex<std::collections::HashMap<String, String>>>);
+
+// Track if first file has been handled
+struct FirstFileHandled(Arc<Mutex<bool>>);
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
@@ -71,20 +74,22 @@ fn compress_json(content: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn get_pending_file(app: tauri::AppHandle) -> Option<String> {
-    let pending = app.state::<PendingFile>();
+fn get_pending_file(app: tauri::AppHandle, window_label: String) -> Option<String> {
+    let pending = app.state::<PendingFiles>();
     let mut guard = pending.0.lock().unwrap();
-    guard.take()
+    guard.remove(&window_label)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let pending_file = Arc::new(Mutex::new(None::<String>));
+    let pending_files = Arc::new(Mutex::new(std::collections::HashMap::<String, String>::new()));
+    let first_file_handled = Arc::new(Mutex::new(false));
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .manage(PendingFile(pending_file.clone()))
+        .manage(PendingFiles(pending_files.clone()))
+        .manage(FirstFileHandled(first_file_handled.clone()))
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
@@ -254,14 +259,83 @@ pub fn run() {
                 if url.scheme() == "file" {
                     if let Ok(path) = url.to_file_path() {
                         let path_str = path.to_string_lossy().to_string();
-                        // Store the pending file for frontend to pick up
-                        {
-                            let pending = app.state::<PendingFile>();
-                            let mut guard = pending.0.lock().unwrap();
-                            *guard = Some(path_str.clone());
+                        
+                        // Extract filename from path for window title
+                        let filename = path.file_name()
+                            .and_then(|f| f.to_str())
+                            .unwrap_or("Unknown");
+                        
+                        // Check if this is the first file being opened
+                        let first_handled = app.state::<FirstFileHandled>();
+                        let mut first_flag = first_handled.0.lock().unwrap();
+                        let is_first = !*first_flag;
+                        
+                        if is_first {
+                            // First file - try to use main window
+                            *first_flag = true;
+                            drop(first_flag);
+
+                            if let Some(window) = app.get_webview_window("main") {
+                                // Main window exists, use it
+                                let _ = window.set_title(&format!("JSON Editor - {}", filename));
+
+                                // Store pending file for main window
+                                {
+                                    let pending = app.state::<PendingFiles>();
+                                    let mut guard = pending.0.lock().unwrap();
+                                    guard.insert("main".to_string(), path_str.clone());
+                                }
+
+                                // Emit event to the window to load the file
+                                let _ = window.emit("file-opened", &path_str);
+
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            } else {
+                                // Main window not ready yet, store for later
+                                {
+                                    let pending = app.state::<PendingFiles>();
+                                    let mut guard = pending.0.lock().unwrap();
+                                    guard.insert("main".to_string(), path_str.clone());
+                                }
+                            }
+                        } else {
+                            // Not the first file - create a new window
+                            drop(first_flag);
+                            
+                            let app_handle = app.app_handle().clone();
+                            let window_label = format!("window-{}", std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis());
+                            
+                            match tauri::WebviewWindowBuilder::new(
+                                &app_handle,
+                                &window_label,
+                                tauri::WebviewUrl::App("index.html".into())
+                            )
+                            .title(format!("JSON Editor - {}", filename))
+                            .inner_size(1200.0, 800.0)
+                            .min_inner_size(800.0, 600.0)
+                            .resizable(true)
+                            .build() {
+                                Ok(window) => {
+                                    // Store the pending file for this window
+                                    {
+                                        let pending = app.state::<PendingFiles>();
+                                        let mut guard = pending.0.lock().unwrap();
+                                        guard.insert(window_label.clone(), path_str.clone());
+                                    }
+                                    // Emit event to the window to load the file
+                                    let _ = window.emit("file-opened", &path_str);
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to create window: {}", e);
+                                }
+                            }
                         }
-                        // Also emit event in case frontend is already ready
-                        let _ = app.emit("file-opened", path_str);
                     }
                 }
             }

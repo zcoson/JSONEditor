@@ -69,19 +69,26 @@ function App() {
   useEffect(() => {
     console.log('Setting up file-opened listener');
 
-    // Check for pending file (from app launch via file double-click)
-    invoke<string | null>('get_pending_file').then((pendingPath) => {
-      if (pendingPath) {
-        console.log('Found pending file:', pendingPath);
-        invoke<string>('read_file', { path: pendingPath }).then((content) => {
-          console.log('Pending file content loaded, length:', content.length);
-          loadJson(content, pendingPath);
-        }).catch((error) => {
-          console.error('Failed to read pending file:', error);
-        });
-      }
+    // Get current window label and check for pending file
+    import('@tauri-apps/api/webviewWindow').then(({ WebviewWindow }) => {
+      const currentWindow = WebviewWindow.getCurrent();
+      const windowLabel = currentWindow.label;
+      
+      invoke<string | null>('get_pending_file', { windowLabel }).then((pendingPath) => {
+        if (pendingPath) {
+          console.log('Found pending file for window:', windowLabel, pendingPath);
+          invoke<string>('read_file', { path: pendingPath }).then((content) => {
+            console.log('Pending file content loaded, length:', content.length);
+            loadJson(content, pendingPath);
+          }).catch((error) => {
+            console.error('Failed to read pending file:', error);
+          });
+        }
+      }).catch((error) => {
+        console.error('Failed to get pending file:', error);
+      });
     }).catch((error) => {
-      console.error('Failed to get pending file:', error);
+      console.error('Failed to get current window:', error);
     });
 
     const unlisten = listen<string>('file-opened', async (event) => {
