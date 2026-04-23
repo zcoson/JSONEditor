@@ -1,8 +1,11 @@
 use std::fs;
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
+use std::io::{Cursor, Read};
 use serde::{Deserialize, Serialize};
 use reqwest;
+use zip::ZipArchive;
+use encoding_rs;
 use tauri::{Emitter, Manager, menu::{Menu, MenuItem, Submenu, PredefinedMenuItem, AboutMetadata, IsMenuItem}};
 
 // Maximum file size: 50MB
@@ -12,6 +15,14 @@ const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
 pub struct FileInfo {
     pub content: String,
     pub path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ZipEntry {
+    pub name: String,        // Display name (decoded)
+    pub original_name: String, // Original name in zip (for fallback lookup)
+    pub index: usize,        // Index in zip for reliable lookup
+    pub is_json: bool,
 }
 
 // Store for pending files to open (maps window label to file path)
@@ -112,6 +123,96 @@ fn get_pending_file(app: tauri::AppHandle, window_label: String) -> Option<Strin
     guard.remove(&window_label)
 }
 
+// Try to decode filename bytes with proper encoding
+// ZIP files may use UTF-8 (with Language encoding flag) or legacy encoding like GBK/CP437
+fn decode_filename_bytes(raw_bytes: &[u8]) -> String {
+    // First try UTF-8
+    if let Ok(utf8_str) = std::str::from_utf8(raw_bytes) {
+        return utf8_str.to_string();
+    }
+
+    // Try GBK (common on Chinese Windows)
+    let (decoded, _encoding, _had_errors) = encoding_rs::GBK.decode(raw_bytes);
+    decoded.into_owned()
+}
+
+#[tauri::command]
+fn list_zip_entries(path: String) -> Result<Vec<ZipEntry>, String> {
+    if path.contains('\0') {
+        return Err("Invalid path: contains null byte".to_string());
+    }
+
+    let path_buf = PathBuf::from(&path);
+    let metadata = fs::metadata(&path_buf)
+        .map_err(|e| format!("Cannot access file: {}", e))?;
+
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(format!("File too large: {} bytes (max {} bytes)", metadata.len(), MAX_FILE_SIZE));
+    }
+
+    let bytes = fs::read(&path_buf).map_err(|e| format!("Failed to read zip file: {}", e))?;
+    let reader = Cursor::new(bytes);
+    let mut archive = ZipArchive::new(reader)
+        .map_err(|e| format!("Failed to parse zip file: {}", e))?;
+
+    let mut entries: Vec<ZipEntry> = Vec::new();
+    for i in 0..archive.len() {
+        let file = archive.by_index(i).map_err(|e| format!("Failed to read entry {}: {}", i, e))?;
+
+        // Get raw bytes of filename
+        let raw_name_bytes = file.name_raw();
+        let decoded_name = decode_filename_bytes(raw_name_bytes);
+
+        // Skip directories
+        if decoded_name.ends_with('/') {
+            continue;
+        }
+
+        let is_json = decoded_name.to_lowercase().ends_with(".json");
+        entries.push(ZipEntry {
+            name: decoded_name,
+            original_name: file.name().to_string(), // Use crate's decoded name for lookup
+            index: i,  // Use index for reliable lookup
+            is_json,
+        });
+    }
+
+    Ok(entries)
+}
+
+#[tauri::command]
+fn read_zip_entry_by_index(path: String, index: usize) -> Result<String, String> {
+    if path.contains('\0') {
+        return Err("Invalid path: contains null byte".to_string());
+    }
+
+    let path_buf = PathBuf::from(&path);
+    let metadata = fs::metadata(&path_buf)
+        .map_err(|e| format!("Cannot access file: {}", e))?;
+
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(format!("File too large: {} bytes (max {} bytes)", metadata.len(), MAX_FILE_SIZE));
+    }
+
+    let bytes = fs::read(&path_buf).map_err(|e| format!("Failed to read zip file: {}", e))?;
+    let reader = Cursor::new(bytes);
+    let mut archive = ZipArchive::new(reader)
+        .map_err(|e| format!("Failed to parse zip file: {}", e))?;
+
+    let mut file = archive.by_index(index)
+        .map_err(|e| format!("Failed to read entry at index {}: {}", index, e))?;
+
+    let mut content = String::new();
+    Read::read_to_string(&mut file, &mut content)
+        .map_err(|e| format!("Failed to read entry content: {}", e))?;
+
+    if content.len() as u64 > MAX_FILE_SIZE {
+        return Err(format!("Content too large: {} bytes (max {} bytes)", content.len(), MAX_FILE_SIZE));
+    }
+
+    Ok(content)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let pending_files = Arc::new(Mutex::new(std::collections::HashMap::<String, String>::new()));
@@ -128,7 +229,9 @@ pub fn run() {
             remove_escape,
             compress_json,
             fetch_url,
-            get_pending_file
+            get_pending_file,
+            list_zip_entries,
+            read_zip_entry_by_index
         ])
         .setup(move |app| {
             // Handle file open events from macOS

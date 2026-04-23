@@ -7,6 +7,7 @@ import { useTheme } from './hooks/useTheme';
 import { JsonTree } from './components/JsonTree';
 import { EditorPanel } from './components/EditorPanel';
 import { Toolbar } from './components/Toolbar';
+import { ZipEntryDialog } from './components/ZipEntryDialog';
 import { parseJson, getValueAtPath, setValueAtPath } from './utils/jsonUtils';
 import type { JsonValue } from './utils/jsonUtils';
 
@@ -14,6 +15,13 @@ interface Column {
   path: (string | number)[];  // Path within this column's JSON
   value: JsonValue | null;     // The JSON value for this column
   titlePath: string;           // Full path for display in title
+}
+
+interface ZipEntry {
+  name: string;
+  original_name: string;
+  index: number;
+  is_json: boolean;
 }
 
 function App() {
@@ -40,6 +48,11 @@ function App() {
     hasOriginal,
   } = useJsonState();
 
+  // Zip file handling state
+  const [zipDialogOpen, setZipDialogOpen] = useState(false);
+  const [zipEntries, setZipEntries] = useState<ZipEntry[]>([]);
+  const [currentZipPath, setCurrentZipPath] = useState<string | null>(null);
+
   // Update CSS variable for font size
   useEffect(() => {
     document.documentElement.style.setProperty('--font-size', `${fontSize}px`);
@@ -52,8 +65,15 @@ function App() {
       if (paths.length > 0) {
         const path = paths[0];
         try {
-          const content = await invoke<string>('read_file', { path });
-          loadJson(content, path);
+          if (path.toLowerCase().endsWith('.zip')) {
+            const entries = await invoke<ZipEntry[]>('list_zip_entries', { path });
+            setZipEntries(entries);
+            setCurrentZipPath(path);
+            setZipDialogOpen(true);
+          } else {
+            const content = await invoke<string>('read_file', { path });
+            loadJson(content, path);
+          }
         } catch (error) {
           console.error('Failed to read dropped file:', error);
         }
@@ -73,16 +93,24 @@ function App() {
     import('@tauri-apps/api/webviewWindow').then(({ WebviewWindow }) => {
       const currentWindow = WebviewWindow.getCurrent();
       const windowLabel = currentWindow.label;
-      
-      invoke<string | null>('get_pending_file', { windowLabel }).then((pendingPath) => {
+
+      invoke<string | null>('get_pending_file', { windowLabel }).then(async (pendingPath) => {
         if (pendingPath) {
           console.log('Found pending file for window:', windowLabel, pendingPath);
-          invoke<string>('read_file', { path: pendingPath }).then((content) => {
-            console.log('Pending file content loaded, length:', content.length);
-            loadJson(content, pendingPath);
-          }).catch((error) => {
+          try {
+            if (pendingPath.toLowerCase().endsWith('.zip')) {
+              const entries = await invoke<ZipEntry[]>('list_zip_entries', { path: pendingPath });
+              setZipEntries(entries);
+              setCurrentZipPath(pendingPath);
+              setZipDialogOpen(true);
+            } else {
+              const content = await invoke<string>('read_file', { path: pendingPath });
+              console.log('Pending file content loaded, length:', content.length);
+              loadJson(content, pendingPath);
+            }
+          } catch (error) {
             console.error('Failed to read pending file:', error);
-          });
+          }
         }
       }).catch((error) => {
         console.error('Failed to get pending file:', error);
@@ -95,9 +123,16 @@ function App() {
       console.log('file-opened event received:', event.payload);
       const path = event.payload;
       try {
-        const content = await invoke<string>('read_file', { path });
-        console.log('File content loaded, length:', content.length);
-        loadJson(content, path);
+        if (path.toLowerCase().endsWith('.zip')) {
+          const entries = await invoke<ZipEntry[]>('list_zip_entries', { path });
+          setZipEntries(entries);
+          setCurrentZipPath(path);
+          setZipDialogOpen(true);
+        } else {
+          const content = await invoke<string>('read_file', { path });
+          console.log('File content loaded, length:', content.length);
+          loadJson(content, path);
+        }
       } catch (error) {
         console.error('Failed to read opened file:', error);
       }
@@ -113,9 +148,34 @@ function App() {
     if (!rawContent) return false;
 
     try {
-      // HTTP URLs can't be saved directly, always open save dialog
+      // Check if file is from a zip file or HTTP URL - always open save dialog
+      const isFromZip = filePath?.includes('#');
       const isHttp = filePath?.startsWith('http://') || filePath?.startsWith('https://');
-      const path = (!isHttp && filePath) || await save({
+
+      // Extract default filename for save dialog
+      let defaultPath: string | undefined;
+      if (isFromZip && filePath) {
+        // For zip files, extract the entry name (after #)
+        const entryName = filePath.split('#')[1];
+        if (entryName) {
+          defaultPath = entryName;
+        }
+      } else if (isHttp && filePath) {
+        // For HTTP URLs, extract filename from URL
+        try {
+          const url = new URL(filePath);
+          const pathname = url.pathname;
+          const filename = pathname.split('/').pop();
+          if (filename && filename.includes('.')) {
+            defaultPath = filename;
+          }
+        } catch {
+          // Invalid URL, ignore
+        }
+      }
+
+      const path = (!isFromZip && !isHttp && filePath) || await save({
+        defaultPath,
         filters: [
           { name: 'JSON', extensions: ['json'] },
         ],
@@ -123,8 +183,8 @@ function App() {
 
       if (path) {
         await invoke('write_file', { path, content: rawContent });
-        // Update filePath to the local save path (especially after saving from HTTP)
-        if (isHttp || !filePath) {
+        // Update filePath to the local save path (especially after saving from HTTP or zip)
+        if (isHttp || isFromZip || !filePath) {
           loadJson(rawContent, path);
         }
         return true;
@@ -144,13 +204,45 @@ function App() {
       });
 
       if (selected) {
-        const content = await invoke<string>('read_file', { path: selected });
-        loadJson(content, selected);
+        // Check if it's a zip file
+        if (selected.toLowerCase().endsWith('.zip')) {
+          const entries = await invoke<ZipEntry[]>('list_zip_entries', { path: selected });
+          setZipEntries(entries);
+          setCurrentZipPath(selected);
+          setZipDialogOpen(true);
+        } else {
+          const content = await invoke<string>('read_file', { path: selected });
+          loadJson(content, selected);
+        }
       }
     } catch (error) {
       console.error('Failed to open file:', error);
     }
   }, [loadJson]);
+
+  // Handle selecting a zip entry
+  const handleZipEntrySelect = useCallback(async (entryName: string, index: number) => {
+    if (!currentZipPath) return;
+    try {
+      const content = await invoke<string>('read_zip_entry_by_index', {
+        path: currentZipPath,
+        index
+      });
+      // Store zip path with entry name for reference, but mark it as zip file
+      loadJson(content, `${currentZipPath}#${entryName}`);
+      setZipDialogOpen(false);
+      setZipEntries([]);
+    } catch (error) {
+      console.error('Failed to read zip entry:', error);
+    }
+  }, [currentZipPath, loadJson]);
+
+  // Handle canceling zip entry selection
+  const handleZipEntryCancel = useCallback(() => {
+    setZipDialogOpen(false);
+    setZipEntries([]);
+    setCurrentZipPath(null);
+  }, []);
 
   // Handle reset - reset to original content
   const handleReset = useCallback(() => {
@@ -766,6 +858,18 @@ function App() {
     </div>
   );
 
+  // Handle opening a zip file (from toolbar path input)
+  const handleOpenZipFile = useCallback(async (path: string) => {
+    try {
+      const entries = await invoke<ZipEntry[]>('list_zip_entries', { path });
+      setZipEntries(entries);
+      setCurrentZipPath(path);
+      setZipDialogOpen(true);
+    } catch (error) {
+      console.error('Failed to open zip file:', error);
+    }
+  }, []);
+
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)]">
       <Toolbar
@@ -785,6 +889,7 @@ function App() {
         onFontSizeChange={setFontSize}
         theme={theme}
         onThemeChange={setTheme}
+        onOpenZipFile={handleOpenZipFile}
       />
 
       {error && (
@@ -800,6 +905,13 @@ function App() {
         layout={layout}
         panels={panels}
         editorPanel={editorPanel}
+      />
+
+      <ZipEntryDialog
+        isOpen={zipDialogOpen}
+        entries={zipEntries}
+        onSelect={handleZipEntrySelect}
+        onCancel={handleZipEntryCancel}
       />
     </div>
   );

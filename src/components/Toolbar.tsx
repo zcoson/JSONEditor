@@ -21,17 +21,19 @@ interface ToolbarProps {
   onFontSizeChange: (size: number) => void;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
+  onOpenZipFile?: (path: string) => void;
 }
 
-export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, onClear, onReset, onUndo, canUndo, hasOriginal, layout, onLayoutChange, fontSize, onFontSizeChange, theme, onThemeChange }: ToolbarProps) {
+export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, onClear, onReset, onUndo, canUndo, hasOriginal, layout, onLayoutChange, fontSize, onFontSizeChange, theme, onThemeChange, onOpenZipFile }: ToolbarProps) {
   const [feedback, setFeedback] = useState<{ action: string; status: 'success' | 'error' } | null>(null);
   const [pathInput, setPathInput] = useState('');
   const [isUrlLoading, setIsUrlLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sync pathInput when filePath changes externally
-  if (filePath && pathInput !== filePath && document.activeElement !== inputRef.current) {
-    setPathInput(filePath);
+  // Sync pathInput when filePath changes externally (but not for zip files with #)
+  const displayPath = filePath?.includes('#') ? filePath.split('#')[0] : filePath;
+  if (displayPath && pathInput !== displayPath && document.activeElement !== inputRef.current) {
+    setPathInput(displayPath);
   }
 
   const showFeedback = (action: string, status: 'success' | 'error' = 'success') => {
@@ -148,6 +150,18 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
                   showFeedback('fetch', 'error');
                 } finally {
                   setIsUrlLoading(false);
+                }
+              } else if (input.toLowerCase().endsWith('.zip')) {
+                try {
+                  // Verify the zip file exists before triggering the open dialog
+                  await invoke<unknown[]>('list_zip_entries', { path: input });
+                  if (onOpenZipFile) {
+                    onOpenZipFile(input);
+                  }
+                  showFeedback('open');
+                } catch (error) {
+                  console.error('Failed to open zip file:', error);
+                  showFeedback('open', 'error');
                 }
               } else {
                 try {

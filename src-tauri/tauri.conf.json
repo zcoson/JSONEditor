@@ -44,6 +44,12 @@
         "name": "JSON File",
         "role": "Editor",
         "mimeType": "application/json"
+      },
+      {
+        "ext": ["zip"],
+        "name": "ZIP Archive",
+        "role": "Viewer",
+        "mimeType": "application/zip"
       }
     ]
   },
