@@ -25,3 +25,5 @@ tauri = { version = "2.10.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
+reqwest = { version = "0.12", features = ["default-tls"] }
+tokio = { version = "1", features = ["full"] }

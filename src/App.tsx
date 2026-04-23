@@ -113,7 +113,9 @@ function App() {
     if (!rawContent) return false;
 
     try {
-      const path = filePath || await save({
+      // HTTP URLs can't be saved directly, always open save dialog
+      const isHttp = filePath?.startsWith('http://') || filePath?.startsWith('https://');
+      const path = (!isHttp && filePath) || await save({
         filters: [
           { name: 'JSON', extensions: ['json'] },
         ],
@@ -121,6 +123,10 @@ function App() {
 
       if (path) {
         await invoke('write_file', { path, content: rawContent });
+        // Update filePath to the local save path (especially after saving from HTTP)
+        if (isHttp || !filePath) {
+          loadJson(rawContent, path);
+        }
         return true;
       }
       return false;
@@ -128,7 +134,7 @@ function App() {
       console.error('Failed to save file:', error);
       return false;
     }
-  }, [rawContent, filePath]);
+  }, [rawContent, filePath, loadJson]);
 
   // Handle open file from menu
   const handleOpenFile = useCallback(async () => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
@@ -25,16 +25,18 @@ interface ToolbarProps {
 
 export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, onClear, onReset, onUndo, canUndo, hasOriginal, layout, onLayoutChange, fontSize, onFontSizeChange, theme, onThemeChange }: ToolbarProps) {
   const [feedback, setFeedback] = useState<{ action: string; status: 'success' | 'error' } | null>(null);
+  const [pathInput, setPathInput] = useState('');
+  const [isUrlLoading, setIsUrlLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync pathInput when filePath changes externally
+  if (filePath && pathInput !== filePath && document.activeElement !== inputRef.current) {
+    setPathInput(filePath);
+  }
 
   const showFeedback = (action: string, status: 'success' | 'error' = 'success') => {
     setFeedback({ action, status });
     setTimeout(() => setFeedback(null), 1500);
-  };
-
-  // 获取文件名
-  const getFileName = (path: string) => {
-    const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-    return lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
   };
 
   const handleSave = async () => {
@@ -88,6 +90,7 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
 
   const handleClear = () => {
     onClear();
+    setPathInput('');
     showFeedback('clear');
   };
 
@@ -110,16 +113,61 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
 
   return (
     <div className="flex items-center gap-2 px-3 py-0.5 bg-gradient-to-r from-[var(--gradient-from)] to-[var(--bg-tertiary)] border-b border-[var(--border-light)] shadow-sm">
-      {/* File path and open button on the left */}
-      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[var(--bg-primary)] rounded-md border border-[var(--border-light)] text-xs text-[var(--text-secondary)] max-w-xs">
-        <svg className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        {filePath ? (
-          <span className="truncate flex-1" title={filePath}>{getFileName(filePath)}</span>
+      {/* File path / URL input on the left, taking remaining space */}
+      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[var(--bg-primary)] rounded-md border border-[var(--border-light)] text-xs text-[var(--text-secondary)] flex-1 min-w-0">
+        {isUrlLoading ? (
+          <svg className="w-3.5 h-3.5 text-[var(--primary)] flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
         ) : (
-          <span className="text-[var(--text-muted)] flex-1">No file</span>
+          <svg className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
         )}
+        <input
+          ref={inputRef}
+          type="text"
+          className="flex-1 bg-transparent outline-none text-xs text-[var(--text-secondary)] placeholder-[var(--text-muted)] min-w-0"
+          placeholder="Enter file path or URL (http/https)..."
+          value={pathInput}
+          onChange={(e) => setPathInput(e.target.value)}
+          onKeyDown={async (e) => {
+            if (e.key === 'Enter') {
+              const input = pathInput.trim();
+              if (!input) return;
+
+              if (input.startsWith('http://') || input.startsWith('https://')) {
+                setIsUrlLoading(true);
+                try {
+                  const content = await invoke<string>('fetch_url', { url: input });
+                  onLoadJson(content, input);
+                  showFeedback('fetch');
+                } catch (error) {
+                  console.error('Failed to fetch URL:', error);
+                  showFeedback('fetch', 'error');
+                } finally {
+                  setIsUrlLoading(false);
+                }
+              } else {
+                try {
+                  const content = await invoke<string>('read_file', { path: input });
+                  onLoadJson(content, input);
+                  showFeedback('open');
+                } catch (error) {
+                  console.error('Failed to read file:', error);
+                  showFeedback('open', 'error');
+                }
+              }
+              inputRef.current?.blur();
+            }
+          }}
+          onFocus={() => {
+            if (filePath && !pathInput) {
+              setPathInput(filePath);
+            }
+          }}
+        />
         <button onClick={onOpenFile} className="p-0.5 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex-shrink-0" title="Open file">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
@@ -209,7 +257,7 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
         {feedback?.action === 'save' ? (feedback.status === 'success' ? 'Saved!' : 'Cancelled') : 'Save'}
       </button>
 
-      <div className="flex-1" />
+      <div className="w-px h-5 bg-[var(--border-default)]" />
 
       <div className="flex items-center gap-1 bg-[var(--bg-primary)] rounded-md border border-[var(--border-light)] p-0.5">
         <button

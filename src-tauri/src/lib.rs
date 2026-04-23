@@ -2,6 +2,7 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use reqwest;
 use tauri::{Emitter, Manager, menu::{Menu, MenuItem, Submenu, PredefinedMenuItem, AboutMetadata, IsMenuItem}};
 
 // Maximum file size: 50MB
@@ -74,6 +75,37 @@ fn compress_json(content: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn fetch_url(url: String) -> Result<String, String> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("Invalid URL: must start with http:// or https://".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client.get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch URL: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("HTTP error: {}", response.status()));
+    }
+
+    let content = response.text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    if content.len() as u64 > MAX_FILE_SIZE {
+        return Err(format!("Content too large: {} bytes (max {} bytes)", content.len(), MAX_FILE_SIZE));
+    }
+
+    Ok(content)
+}
+
+#[tauri::command]
 fn get_pending_file(app: tauri::AppHandle, window_label: String) -> Option<String> {
     let pending = app.state::<PendingFiles>();
     let mut guard = pending.0.lock().unwrap();
@@ -95,6 +127,7 @@ pub fn run() {
             write_file,
             remove_escape,
             compress_json,
+            fetch_url,
             get_pending_file
         ])
         .setup(move |app| {
