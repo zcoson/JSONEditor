@@ -14,6 +14,14 @@ use sha1::Sha1;
 // Maximum file size: 50MB
 const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
 
+// Config file path: ~/.jsoneditor/oss_config.json
+fn get_config_path() -> PathBuf {
+    dirs::home_dir()
+        .expect("Could not find home directory")
+        .join(".jsoneditor")
+        .join("oss_config.json")
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileInfo {
     pub content: String,
@@ -37,11 +45,106 @@ struct OssConfig {
     object_key: String,
 }
 
-// Parse OSS URL and get credentials based on environment
+#[derive(Debug, Serialize, Deserialize)]
+struct OssCredentials {
+    access_key_id: String,
+    access_key_secret: String,
+    endpoint: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OssConfigFile {
+    // Per-bucket credentials
+    buckets: Option<std::collections::HashMap<String, OssCredentials>>,
+    // Legacy environment-based credentials (for backward compatibility)
+    test: Option<OssCredentials>,
+    prod: Option<OssCredentials>,
+    default: Option<OssCredentials>,
+}
+
+// Load OSS config from ~/.jsoneditor/oss_config.json
+fn load_oss_config_file() -> Result<OssConfigFile, String> {
+    let config_path = get_config_path();
+    if !config_path.exists() {
+        return Ok(OssConfigFile {
+            buckets: None,
+            test: None,
+            prod: None,
+            default: None,
+        });
+    }
+    let content = fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read OSS config file: {}", e))?;
+    serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse OSS config file: {}", e))
+}
+
+// Get credentials: first try environment variable, then config file
+fn get_oss_credentials(bucket: &str) -> Result<(String, String, String), String> {
+    // Determine environment prefix based on bucket name
+    let env_prefix = if bucket == "servu-test-xw" {
+        "TEST_OSS"
+    } else if bucket == "servu-tax" {
+        "PROD_OSS"
+    } else {
+        "OSS"
+    };
+
+    // First try environment variables
+    let env_id = std::env::var(format!("{}_ACCESS_KEY_ID", env_prefix));
+    let env_secret = std::env::var(format!("{}_ACCESS_KEY_SECRET", env_prefix));
+
+    if let (Ok(id), Ok(secret)) = (env_id, env_secret) {
+        return Ok((id, secret, "oss-cn-hangzhou.aliyuncs.com".to_string()));
+    }
+
+    // Fallback to config file
+    let config = load_oss_config_file()?;
+
+    // Try bucket-specific credentials first
+    if let Some(ref buckets) = config.buckets {
+        if let Some(creds) = buckets.get(bucket) {
+            return Ok((
+                creds.access_key_id.clone(),
+                creds.access_key_secret.clone(),
+                creds.endpoint.clone().unwrap_or_else(|| "oss-cn-hangzhou.aliyuncs.com".to_string()),
+            ));
+        }
+    }
+
+    // Try legacy environment-based credentials in config
+    if bucket == "servu-test-xw" {
+        if let Some(ref creds) = config.test {
+            return Ok((
+                creds.access_key_id.clone(),
+                creds.access_key_secret.clone(),
+                creds.endpoint.clone().unwrap_or_else(|| "oss-cn-hangzhou.aliyuncs.com".to_string()),
+            ));
+        }
+    } else if bucket == "servu-tax" {
+        if let Some(ref creds) = config.prod {
+            return Ok((
+                creds.access_key_id.clone(),
+                creds.access_key_secret.clone(),
+                creds.endpoint.clone().unwrap_or_else(|| "oss-cn-hangzhou.aliyuncs.com".to_string()),
+            ));
+        }
+    }
+
+    // Try default credentials
+    if let Some(ref creds) = config.default {
+        return Ok((
+            creds.access_key_id.clone(),
+            creds.access_key_secret.clone(),
+            creds.endpoint.clone().unwrap_or_else(|| "oss-cn-hangzhou.aliyuncs.com".to_string()),
+        ));
+    }
+
+    Err(format!("OSS credentials not found for bucket '{}'. Set environment variables or create ~/.jsoneditor/oss_config.json", bucket))
+}
+
+// Parse OSS URL and get credentials
 // URL format: oss://bucket/path/to/object
-// servu-test-xw -> TEST_OSS_ACCESS_KEY_ID, TEST_OSS_ACCESS_KEY_SECRET
-// servu-tax -> PROD_OSS_ACCESS_KEY_ID, PROD_OSS_ACCESS_KEY_SECRET
-// other buckets -> OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET
 fn parse_oss_url(url: &str) -> Result<OssConfig, String> {
     let url = url.strip_prefix("oss://").ok_or("URL must start with oss://")?;
 
@@ -53,26 +156,7 @@ fn parse_oss_url(url: &str) -> Result<OssConfig, String> {
     let bucket = parts[0].to_string();
     let object_key = parts[1].to_string();
 
-    // Determine environment based on bucket name
-    let (access_key_id, access_key_secret, endpoint) = if bucket == "servu-test-xw" {
-        let id = std::env::var("TEST_OSS_ACCESS_KEY_ID")
-            .map_err(|_| "TEST_OSS_ACCESS_KEY_ID not set in environment".to_string())?;
-        let secret = std::env::var("TEST_OSS_ACCESS_KEY_SECRET")
-            .map_err(|_| "TEST_OSS_ACCESS_KEY_SECRET not set in environment".to_string())?;
-        (id, secret, "oss-cn-hangzhou.aliyuncs.com".to_string())
-    } else if bucket == "servu-tax" {
-        let id = std::env::var("PROD_OSS_ACCESS_KEY_ID")
-            .map_err(|_| "PROD_OSS_ACCESS_KEY_ID not set in environment".to_string())?;
-        let secret = std::env::var("PROD_OSS_ACCESS_KEY_SECRET")
-            .map_err(|_| "PROD_OSS_ACCESS_KEY_SECRET not set in environment".to_string())?;
-        (id, secret, "oss-cn-hangzhou.aliyuncs.com".to_string())
-    } else {
-        let id = std::env::var("OSS_ACCESS_KEY_ID")
-            .map_err(|_| "OSS_ACCESS_KEY_ID not set in environment".to_string())?;
-        let secret = std::env::var("OSS_ACCESS_KEY_SECRET")
-            .map_err(|_| "OSS_ACCESS_KEY_SECRET not set in environment".to_string())?;
-        (id, secret, "oss-cn-hangzhou.aliyuncs.com".to_string())
-    };
+    let (access_key_id, access_key_secret, endpoint) = get_oss_credentials(&bucket)?;
 
     Ok(OssConfig {
         access_key_id,
