@@ -10,6 +10,7 @@ export interface UseJsonStateReturn {
   filePath: string | null;
   setRawContent: (content: string) => void;
   setSelectedPath: (path: (string | number)[]) => void;
+  setError: (error: string | null) => void;
   updateValue: (path: (string | number)[], newValue: JsonValue) => void;
   insertItem: (path: (string | number)[], index: number, newItem: JsonValue) => void;
   removeItem: (path: (string | number)[], index: number) => void;
@@ -43,10 +44,15 @@ export function useJsonState(): UseJsonStateReturn {
       return;
     }
 
+    // Clear existing content before loading new file
+    setSelectedPath([]);
+
     setRawContent(content);
     setOriginalContent(content);
     if (path) {
       setFilePath(path);
+    } else {
+      setFilePath(null);
     }
     try {
       const parsed = JSON.parse(content);
@@ -175,6 +181,7 @@ export function useJsonState(): UseJsonStateReturn {
     filePath,
     setRawContent,
     setSelectedPath,
+    setError,
     updateValue,
     insertItem,
     removeItem,

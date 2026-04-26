@@ -22,9 +22,10 @@ interface ToolbarProps {
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
   onOpenZipFile?: (path: string) => void;
+  onError?: (error: string | null) => void;
 }
 
-export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, onClear, onReset, onUndo, canUndo, hasOriginal, layout, onLayoutChange, fontSize, onFontSizeChange, theme, onThemeChange, onOpenZipFile }: ToolbarProps) {
+export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, onClear, onReset, onUndo, canUndo, hasOriginal, layout, onLayoutChange, fontSize, onFontSizeChange, theme, onThemeChange, onOpenZipFile, onError }: ToolbarProps) {
   const [feedback, setFeedback] = useState<{ action: string; status: 'success' | 'error' } | null>(null);
   const [pathInput, setPathInput] = useState('');
   const [isUrlLoading, setIsUrlLoading] = useState(false);
@@ -131,7 +132,7 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
           ref={inputRef}
           type="text"
           className="flex-1 bg-transparent outline-none text-xs text-[var(--text-secondary)] placeholder-[var(--text-muted)] min-w-0"
-          placeholder="Enter file path or URL (http/https)..."
+          placeholder="Enter file path, URL (http/https), or OSS path (oss://bucket/path)..."
           value={pathInput}
           onChange={(e) => setPathInput(e.target.value)}
           onKeyDown={async (e) => {
@@ -139,14 +140,67 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
               const input = pathInput.trim();
               if (!input) return;
 
-              if (input.startsWith('http://') || input.startsWith('https://')) {
+              if (input.startsWith('oss://')) {
+                setIsUrlLoading(true);
+                try {
+                  const bytes = await invoke<number[]>('fetch_oss', { url: input });
+                  const uint8Array = new Uint8Array(bytes);
+
+                  // Try to decode as text first
+                  const decoder = new TextDecoder('utf-8', { fatal: false });
+                  const text = decoder.decode(uint8Array);
+
+                  // Check if it's valid text (no replacement characters for binary data)
+                  const hasReplacementChar = text.includes('\uFFFD');
+
+                  if (!hasReplacementChar && text.length > 0) {
+                    // It's text content
+                    onLoadJson(text, input);
+                    onError?.(null);
+                    showFeedback('fetch');
+                  } else {
+                    // It's binary, try as zip
+                    try {
+                      // Create a temp file path for the zip
+                      const tempPath = `oss-zip://${input.replace('oss://', '')}`;
+                      if (onOpenZipFile) {
+                        // Store bytes for later use
+                        (window as unknown as { __ossZipData: Map<string, Uint8Array> }).__ossZipData =
+                          (window as unknown as { __ossZipData: Map<string, Uint8Array> }).__ossZipData || new Map();
+                        (window as unknown as { __ossZipData: Map<string, Uint8Array> }).__ossZipData.set(tempPath, uint8Array);
+                        onOpenZipFile(tempPath);
+                      }
+                      onError?.(null);
+                      showFeedback('open');
+                    } catch (error) {
+                      console.error('Failed to open OSS zip:', error);
+                      const msg = error instanceof Error ? error.message : String(error);
+                      onClear();
+                      onError?.(`OSS Zip Error: ${msg}`);
+                      showFeedback('open', 'error');
+                    }
+                  }
+                } catch (error) {
+                  console.error('Failed to fetch OSS:', error);
+                  const msg = error instanceof Error ? error.message : String(error);
+                  onClear();
+                  onError?.(`OSS Error: ${msg}`);
+                  showFeedback('fetch', 'error');
+                } finally {
+                  setIsUrlLoading(false);
+                }
+              } else if (input.startsWith('http://') || input.startsWith('https://')) {
                 setIsUrlLoading(true);
                 try {
                   const content = await invoke<string>('fetch_url', { url: input });
                   onLoadJson(content, input);
+                  onError?.(null);
                   showFeedback('fetch');
                 } catch (error) {
                   console.error('Failed to fetch URL:', error);
+                  const msg = error instanceof Error ? error.message : String(error);
+                  onClear();
+                  onError?.(`URL Error: ${msg}`);
                   showFeedback('fetch', 'error');
                 } finally {
                   setIsUrlLoading(false);
@@ -158,18 +212,26 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
                   if (onOpenZipFile) {
                     onOpenZipFile(input);
                   }
+                  onError?.(null);
                   showFeedback('open');
                 } catch (error) {
                   console.error('Failed to open zip file:', error);
+                  const msg = error instanceof Error ? error.message : String(error);
+                  onClear();
+                  onError?.(`Zip Error: ${msg}`);
                   showFeedback('open', 'error');
                 }
               } else {
                 try {
                   const content = await invoke<string>('read_file', { path: input });
                   onLoadJson(content, input);
+                  onError?.(null);
                   showFeedback('open');
                 } catch (error) {
                   console.error('Failed to read file:', error);
+                  const msg = error instanceof Error ? error.message : String(error);
+                  onClear();
+                  onError?.(`File Error: ${msg}`);
                   showFeedback('open', 'error');
                 }
               }
@@ -226,7 +288,6 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
       <button
         onClick={handleClear}
         className={`btn ${feedback?.action === 'clear' ? 'bg-green-500 text-white' : 'btn-danger'}`}
-        disabled={!rawContent}
         title="Clear content"
       >
         <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">

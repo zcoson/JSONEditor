@@ -35,6 +35,7 @@ function App() {
     error,
     filePath,
     setSelectedPath,
+    setError,
     updateValue,
     insertItem,
     removeItem,
@@ -148,33 +149,44 @@ function App() {
     if (!rawContent) return false;
 
     try {
-      // Check if file is from a zip file or HTTP URL - always open save dialog
+      // Check if file is from a zip file, HTTP URL, or OSS - always open save dialog
+      const isOss = filePath?.startsWith('oss://') || filePath?.startsWith('oss-zip://');
       const isFromZip = filePath?.includes('#');
       const isHttp = filePath?.startsWith('http://') || filePath?.startsWith('https://');
 
       // Extract default filename for save dialog
       let defaultPath: string | undefined;
-      if (isFromZip && filePath) {
-        // For zip files, extract the entry name (after #)
-        const entryName = filePath.split('#')[1];
-        if (entryName) {
-          defaultPath = entryName;
-        }
-      } else if (isHttp && filePath) {
-        // For HTTP URLs, extract filename from URL
-        try {
-          const url = new URL(filePath);
-          const pathname = url.pathname;
-          const filename = pathname.split('/').pop();
-          if (filename && filename.includes('.')) {
+      if (filePath) {
+        // For zip files (including OSS zip), extract the entry name (after #)
+        if (isFromZip) {
+          const entryName = filePath.split('#')[1];
+          if (entryName) {
+            defaultPath = entryName;
+          }
+        } else if (isHttp) {
+          // For HTTP URLs, extract filename from URL
+          try {
+            const url = new URL(filePath);
+            const pathname = url.pathname;
+            const filename = pathname.split('/').pop();
+            if (filename) {
+              defaultPath = filename;
+            }
+          } catch {
+            // Invalid URL, ignore
+          }
+        } else if (isOss) {
+          // For OSS URLs, extract filename from path
+          // oss://bucket/path/to/file.json -> file.json
+          const pathParts = filePath.replace('oss://', '').replace('oss-zip://', '').split('/');
+          const filename = pathParts.pop();
+          if (filename) {
             defaultPath = filename;
           }
-        } catch {
-          // Invalid URL, ignore
         }
       }
 
-      const path = (!isFromZip && !isHttp && filePath) || await save({
+      const path = (!isFromZip && !isHttp && !isOss && filePath) || await save({
         defaultPath,
         filters: [
           { name: 'JSON', extensions: ['json'] },
@@ -183,8 +195,8 @@ function App() {
 
       if (path) {
         await invoke('write_file', { path, content: rawContent });
-        // Update filePath to the local save path (especially after saving from HTTP or zip)
-        if (isHttp || isFromZip || !filePath) {
+        // Update filePath to the local save path (especially after saving from HTTP, OSS or zip)
+        if (isHttp || isOss || isFromZip || !filePath) {
           loadJson(rawContent, path);
         }
         return true;
@@ -224,10 +236,27 @@ function App() {
   const handleZipEntrySelect = useCallback(async (entryName: string, index: number) => {
     if (!currentZipPath) return;
     try {
-      const content = await invoke<string>('read_zip_entry_by_index', {
-        path: currentZipPath,
-        index
-      });
+      let content: string;
+
+      // Check if it's an OSS zip (stored in memory)
+      if (currentZipPath.startsWith('oss-zip://')) {
+        const ossZipData = (window as unknown as { __ossZipData: Map<string, Uint8Array> }).__ossZipData;
+        const bytes = ossZipData?.get(currentZipPath);
+        if (bytes) {
+          content = await invoke<string>('read_zip_entry_from_bytes', {
+            bytes: Array.from(bytes),
+            index
+          });
+        } else {
+          throw new Error('OSS zip data not found in memory');
+        }
+      } else {
+        content = await invoke<string>('read_zip_entry_by_index', {
+          path: currentZipPath,
+          index
+        });
+      }
+
       // Store zip path with entry name for reference, but mark it as zip file
       loadJson(content, `${currentZipPath}#${entryName}`);
       setZipDialogOpen(false);
@@ -861,10 +890,24 @@ function App() {
   // Handle opening a zip file (from toolbar path input)
   const handleOpenZipFile = useCallback(async (path: string) => {
     try {
-      const entries = await invoke<ZipEntry[]>('list_zip_entries', { path });
-      setZipEntries(entries);
-      setCurrentZipPath(path);
-      setZipDialogOpen(true);
+      // Check if it's an OSS zip (stored in memory)
+      if (path.startsWith('oss-zip://')) {
+        const ossZipData = (window as unknown as { __ossZipData: Map<string, Uint8Array> }).__ossZipData;
+        const bytes = ossZipData?.get(path);
+        if (bytes) {
+          const entries = await invoke<ZipEntry[]>('list_zip_entries_from_bytes', { bytes: Array.from(bytes) });
+          setZipEntries(entries);
+          setCurrentZipPath(path);
+          setZipDialogOpen(true);
+        } else {
+          console.error('OSS zip data not found in memory');
+        }
+      } else {
+        const entries = await invoke<ZipEntry[]>('list_zip_entries', { path });
+        setZipEntries(entries);
+        setCurrentZipPath(path);
+        setZipDialogOpen(true);
+      }
     } catch (error) {
       console.error('Failed to open zip file:', error);
     }
@@ -890,6 +933,7 @@ function App() {
         theme={theme}
         onThemeChange={setTheme}
         onOpenZipFile={handleOpenZipFile}
+        onError={setError}
       />
 
       {error && (

@@ -7,6 +7,9 @@ use reqwest;
 use zip::ZipArchive;
 use encoding_rs;
 use tauri::{Emitter, Manager, menu::{Menu, MenuItem, Submenu, PredefinedMenuItem, AboutMetadata, IsMenuItem}};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use hmac::{Hmac, Mac};
+use sha1::Sha1;
 
 // Maximum file size: 50MB
 const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
@@ -23,6 +26,82 @@ pub struct ZipEntry {
     pub original_name: String, // Original name in zip (for fallback lookup)
     pub index: usize,        // Index in zip for reliable lookup
     pub is_json: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OssConfig {
+    access_key_id: String,
+    access_key_secret: String,
+    bucket: String,
+    endpoint: String,
+    object_key: String,
+}
+
+// Parse OSS URL and get credentials based on environment
+// URL format: oss://bucket/path/to/object
+// servu-test-xw -> TEST_OSS_ACCESS_KEY_ID, TEST_OSS_ACCESS_KEY_SECRET
+// servu-tax -> PROD_OSS_ACCESS_KEY_ID, PROD_OSS_ACCESS_KEY_SECRET
+// other buckets -> OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET
+fn parse_oss_url(url: &str) -> Result<OssConfig, String> {
+    let url = url.strip_prefix("oss://").ok_or("URL must start with oss://")?;
+
+    let parts: Vec<&str> = url.splitn(2, '/').collect();
+    if parts.len() < 2 {
+        return Err("Invalid OSS URL format. Expected: oss://bucket/path/to/object".to_string());
+    }
+
+    let bucket = parts[0].to_string();
+    let object_key = parts[1].to_string();
+
+    // Determine environment based on bucket name
+    let (access_key_id, access_key_secret, endpoint) = if bucket == "servu-test-xw" {
+        let id = std::env::var("TEST_OSS_ACCESS_KEY_ID")
+            .map_err(|_| "TEST_OSS_ACCESS_KEY_ID not set in environment".to_string())?;
+        let secret = std::env::var("TEST_OSS_ACCESS_KEY_SECRET")
+            .map_err(|_| "TEST_OSS_ACCESS_KEY_SECRET not set in environment".to_string())?;
+        (id, secret, "oss-cn-hangzhou.aliyuncs.com".to_string())
+    } else if bucket == "servu-tax" {
+        let id = std::env::var("PROD_OSS_ACCESS_KEY_ID")
+            .map_err(|_| "PROD_OSS_ACCESS_KEY_ID not set in environment".to_string())?;
+        let secret = std::env::var("PROD_OSS_ACCESS_KEY_SECRET")
+            .map_err(|_| "PROD_OSS_ACCESS_KEY_SECRET not set in environment".to_string())?;
+        (id, secret, "oss-cn-hangzhou.aliyuncs.com".to_string())
+    } else {
+        let id = std::env::var("OSS_ACCESS_KEY_ID")
+            .map_err(|_| "OSS_ACCESS_KEY_ID not set in environment".to_string())?;
+        let secret = std::env::var("OSS_ACCESS_KEY_SECRET")
+            .map_err(|_| "OSS_ACCESS_KEY_SECRET not set in environment".to_string())?;
+        (id, secret, "oss-cn-hangzhou.aliyuncs.com".to_string())
+    };
+
+    Ok(OssConfig {
+        access_key_id,
+        access_key_secret,
+        bucket,
+        endpoint,
+        object_key,
+    })
+}
+
+// Generate OSS signature
+fn generate_oss_signature(
+    method: &str,
+    resource: &str,
+    date: &str,
+    content_type: &str,
+    access_key_secret: &str,
+) -> String {
+    let string_to_sign = format!(
+        "{}\n\n{}\n{}\n{}",
+        method, content_type, date, resource
+    );
+
+    type HmacSha1 = Hmac<Sha1>;
+    let mut mac = HmacSha1::new_from_slice(access_key_secret.as_bytes())
+        .expect("HMAC can take key of any size");
+    mac.update(string_to_sign.as_bytes());
+    let result = mac.finalize();
+    STANDARD.encode(result.into_bytes())
 }
 
 // Store for pending files to open (maps window label to file path)
@@ -114,6 +193,55 @@ async fn fetch_url(url: String) -> Result<String, String> {
     }
 
     Ok(content)
+}
+
+#[tauri::command]
+async fn fetch_oss(url: String) -> Result<Vec<u8>, String> {
+    let config = parse_oss_url(&url)?;
+
+    let date = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+    let resource = format!("/{}/{}", config.bucket, config.object_key);
+    let signature = generate_oss_signature("GET", &resource, &date, "", &config.access_key_secret);
+
+    let oss_url = format!(
+        "https://{}.{}/{}",
+        config.bucket, config.endpoint, config.object_key
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .get(&oss_url)
+        .header("Date", &date)
+        .header(
+            "Authorization",
+            format!("OSS {}:{}", config.access_key_id, signature),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch OSS object: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("OSS error: {}", response.status()));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    if bytes.len() as u64 > MAX_FILE_SIZE {
+        return Err(format!(
+            "Content too large: {} bytes (max {} bytes)",
+            bytes.len(),
+            MAX_FILE_SIZE
+        ));
+    }
+
+    Ok(bytes.to_vec())
 }
 
 #[tauri::command]
@@ -213,6 +341,63 @@ fn read_zip_entry_by_index(path: String, index: usize) -> Result<String, String>
     Ok(content)
 }
 
+#[tauri::command]
+fn list_zip_entries_from_bytes(bytes: Vec<u8>) -> Result<Vec<ZipEntry>, String> {
+    if bytes.len() as u64 > MAX_FILE_SIZE {
+        return Err(format!("Data too large: {} bytes (max {} bytes)", bytes.len(), MAX_FILE_SIZE));
+    }
+
+    let reader = Cursor::new(bytes);
+    let mut archive = ZipArchive::new(reader)
+        .map_err(|e| format!("Failed to parse zip data: {}", e))?;
+
+    let mut entries: Vec<ZipEntry> = Vec::new();
+    for i in 0..archive.len() {
+        let file = archive.by_index(i).map_err(|e| format!("Failed to read entry {}: {}", i, e))?;
+
+        let raw_name_bytes = file.name_raw();
+        let decoded_name = decode_filename_bytes(raw_name_bytes);
+
+        if decoded_name.ends_with('/') {
+            continue;
+        }
+
+        let is_json = decoded_name.to_lowercase().ends_with(".json");
+        entries.push(ZipEntry {
+            name: decoded_name,
+            original_name: file.name().to_string(),
+            index: i,
+            is_json,
+        });
+    }
+
+    Ok(entries)
+}
+
+#[tauri::command]
+fn read_zip_entry_from_bytes(bytes: Vec<u8>, index: usize) -> Result<String, String> {
+    if bytes.len() as u64 > MAX_FILE_SIZE {
+        return Err(format!("Data too large: {} bytes (max {} bytes)", bytes.len(), MAX_FILE_SIZE));
+    }
+
+    let reader = Cursor::new(bytes);
+    let mut archive = ZipArchive::new(reader)
+        .map_err(|e| format!("Failed to parse zip data: {}", e))?;
+
+    let mut file = archive.by_index(index)
+        .map_err(|e| format!("Failed to read entry at index {}: {}", index, e))?;
+
+    let mut content = String::new();
+    Read::read_to_string(&mut file, &mut content)
+        .map_err(|e| format!("Failed to read entry content: {}", e))?;
+
+    if content.len() as u64 > MAX_FILE_SIZE {
+        return Err(format!("Content too large: {} bytes (max {} bytes)", content.len(), MAX_FILE_SIZE));
+    }
+
+    Ok(content)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let pending_files = Arc::new(Mutex::new(std::collections::HashMap::<String, String>::new()));
@@ -229,9 +414,12 @@ pub fn run() {
             remove_escape,
             compress_json,
             fetch_url,
+            fetch_oss,
             get_pending_file,
             list_zip_entries,
-            read_zip_entry_by_index
+            read_zip_entry_by_index,
+            list_zip_entries_from_bytes,
+            read_zip_entry_from_bytes
         ])
         .setup(move |app| {
             // Handle file open events from macOS
