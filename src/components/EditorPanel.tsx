@@ -1074,10 +1074,10 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
       const beforeCursor = filterExpr.slice(0, cursorPos);
       const afterCursor = filterExpr.slice(cursorPos);
 
-      // Find the dot and partial property name
-      const dotMatch = beforeCursor.match(/(\w+)\.(\w*)$/);
-      if (dotMatch) {
-        const prefix = beforeCursor.slice(0, -dotMatch[2].length);
+      // Find the dot position - insert after the dot
+      const dotIndex = beforeCursor.lastIndexOf('.');
+      if (dotIndex !== -1) {
+        const prefix = beforeCursor.slice(0, dotIndex + 1);
         setFilterExpr(prefix + suggestion + afterCursor);
         setShowAutocomplete(false);
         // Focus back to input after state update
@@ -1097,9 +1097,10 @@ export const EditorPanel = memo(function EditorPanel({ rootValue, selectedPath, 
     const beforeCursor = filterExpr.slice(0, cursorPos);
     const afterCursor = filterExpr.slice(cursorPos);
 
-    const dotMatch = beforeCursor.match(/(\w+)\.(\w*)$/);
-    if (dotMatch) {
-      const prefix = beforeCursor.slice(0, -dotMatch[2].length);
+    // Find the dot position - insert after the dot
+    const dotIndex = beforeCursor.lastIndexOf('.');
+    if (dotIndex !== -1) {
+      const prefix = beforeCursor.slice(0, dotIndex + 1);
       const newExpr = prefix + suggestion + afterCursor;
       setFilterExpr(newExpr);
       setShowAutocomplete(false);
