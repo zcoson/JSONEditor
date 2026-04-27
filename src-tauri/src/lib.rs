@@ -482,6 +482,32 @@ fn read_zip_entry_from_bytes(bytes: Vec<u8>, index: usize) -> Result<String, Str
     Ok(content)
 }
 
+#[tauri::command]
+fn is_zip_file(path: String) -> Result<bool, String> {
+    if path.contains('\0') {
+        return Err("Invalid path: contains null byte".to_string());
+    }
+
+    let path_buf = PathBuf::from(&path);
+    let metadata = fs::metadata(&path_buf)
+        .map_err(|e| format!("Cannot access file: {}", e))?;
+
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(format!("File too large: {} bytes (max {} bytes)", metadata.len(), MAX_FILE_SIZE));
+    }
+
+    // Read first 4 bytes to check ZIP magic number
+    let bytes = fs::read(&path_buf)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    // ZIP magic number: 0x50 0x4B 0x03 0x04 (PK..)
+    if bytes.len() >= 4 {
+        Ok(bytes[0] == 0x50 && bytes[1] == 0x4B && bytes[2] == 0x03 && bytes[3] == 0x04)
+    } else {
+        Ok(false)
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let pending_files = Arc::new(Mutex::new(std::collections::HashMap::<String, String>::new()));
@@ -503,7 +529,8 @@ pub fn run() {
             list_zip_entries,
             read_zip_entry_by_index,
             list_zip_entries_from_bytes,
-            read_zip_entry_from_bytes
+            read_zip_entry_from_bytes,
+            is_zip_file
         ])
         .setup(move |app| {
             // Handle file open events from macOS

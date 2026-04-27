@@ -59,6 +59,39 @@ function App() {
     document.documentElement.style.setProperty('--font-size', `${fontSize}px`);
   }, [fontSize]);
 
+  // Helper function to open a file - try as text first, then as zip if fails
+  const openFileWithZipFallback = useCallback(async (path: string) => {
+    // Check if it's a zip file by extension
+    if (path.toLowerCase().endsWith('.zip')) {
+      const entries = await invoke<ZipEntry[]>('list_zip_entries', { path });
+      setZipEntries(entries);
+      setCurrentZipPath(path);
+      setZipDialogOpen(true);
+      return;
+    }
+
+    // Try to read as text
+    try {
+      const content = await invoke<string>('read_file', { path });
+      loadJson(content, path);
+    } catch (error) {
+      // If read_file fails, check if it's a zip file
+      try {
+        const isZip = await invoke<boolean>('is_zip_file', { path });
+        if (isZip) {
+          const entries = await invoke<ZipEntry[]>('list_zip_entries', { path });
+          setZipEntries(entries);
+          setCurrentZipPath(path);
+          setZipDialogOpen(true);
+        } else {
+          console.error('Failed to read file:', error);
+        }
+      } catch (zipError) {
+        console.error('Failed to read file:', error);
+      }
+    }
+  }, [loadJson]);
+
   // Listen for file drop events from Tauri
   useEffect(() => {
     const unlisten = listen<{ paths: string[] }>('tauri://drag-drop', async (event) => {
@@ -66,15 +99,7 @@ function App() {
       if (paths.length > 0) {
         const path = paths[0];
         try {
-          if (path.toLowerCase().endsWith('.zip')) {
-            const entries = await invoke<ZipEntry[]>('list_zip_entries', { path });
-            setZipEntries(entries);
-            setCurrentZipPath(path);
-            setZipDialogOpen(true);
-          } else {
-            const content = await invoke<string>('read_file', { path });
-            loadJson(content, path);
-          }
+          await openFileWithZipFallback(path);
         } catch (error) {
           console.error('Failed to read dropped file:', error);
         }
@@ -84,7 +109,7 @@ function App() {
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [loadJson]);
+  }, [openFileWithZipFallback]);
 
   // Listen for file-opened events (double-click to open)
   useEffect(() => {
@@ -99,16 +124,7 @@ function App() {
         if (pendingPath) {
           console.log('Found pending file for window:', windowLabel, pendingPath);
           try {
-            if (pendingPath.toLowerCase().endsWith('.zip')) {
-              const entries = await invoke<ZipEntry[]>('list_zip_entries', { path: pendingPath });
-              setZipEntries(entries);
-              setCurrentZipPath(pendingPath);
-              setZipDialogOpen(true);
-            } else {
-              const content = await invoke<string>('read_file', { path: pendingPath });
-              console.log('Pending file content loaded, length:', content.length);
-              loadJson(content, pendingPath);
-            }
+            await openFileWithZipFallback(pendingPath);
           } catch (error) {
             console.error('Failed to read pending file:', error);
           }
@@ -124,16 +140,7 @@ function App() {
       console.log('file-opened event received:', event.payload);
       const path = event.payload;
       try {
-        if (path.toLowerCase().endsWith('.zip')) {
-          const entries = await invoke<ZipEntry[]>('list_zip_entries', { path });
-          setZipEntries(entries);
-          setCurrentZipPath(path);
-          setZipDialogOpen(true);
-        } else {
-          const content = await invoke<string>('read_file', { path });
-          console.log('File content loaded, length:', content.length);
-          loadJson(content, path);
-        }
+        await openFileWithZipFallback(path);
       } catch (error) {
         console.error('Failed to read opened file:', error);
       }
@@ -142,7 +149,7 @@ function App() {
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [loadJson]);
+  }, [openFileWithZipFallback]);
 
   // Handle keyboard shortcut for save (Cmd+S on macOS, Ctrl+S on Windows/Linux)
   const handleSave = useCallback(async () => {
@@ -216,21 +223,12 @@ function App() {
       });
 
       if (selected) {
-        // Check if it's a zip file
-        if (selected.toLowerCase().endsWith('.zip')) {
-          const entries = await invoke<ZipEntry[]>('list_zip_entries', { path: selected });
-          setZipEntries(entries);
-          setCurrentZipPath(selected);
-          setZipDialogOpen(true);
-        } else {
-          const content = await invoke<string>('read_file', { path: selected });
-          loadJson(content, selected);
-        }
+        await openFileWithZipFallback(selected);
       }
     } catch (error) {
       console.error('Failed to open file:', error);
     }
-  }, [loadJson]);
+  }, [openFileWithZipFallback]);
 
   // Handle selecting a zip entry
   const handleZipEntrySelect = useCallback(async (entryName: string, index: number) => {
