@@ -51,6 +51,7 @@ export function Toolbar({ rawContent, filePath, onLoadJson, onOpenFile, onSave, 
     try {
       const text = await readText();
       if (text) {
+        onClear();
         onLoadJson(text);
         showFeedback('paste');
       }
