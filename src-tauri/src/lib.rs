@@ -555,6 +555,7 @@ pub fn run() {
             // Create Open and Save menu items with keyboard shortcuts
             let open_item = MenuItem::with_id(app_handle, "open", "Open...", true, Some("CommandOrControl+O"))?;
             let save_item = MenuItem::with_id(app_handle, "save", "Save", true, Some("CommandOrControl+S"))?;
+            let new_window_item = MenuItem::with_id(app_handle, "new_window", "Open New Window", true, Some("CommandOrControl+N"))?;
 
             // Create empty menu
             let menu = Menu::new(app_handle)?;
@@ -586,6 +587,8 @@ pub fn run() {
                 "File",
                 true,
                 &[
+                    &new_window_item as &dyn IsMenuItem<_>,
+                    &PredefinedMenuItem::separator(app_handle)?,
                     &open_item as &dyn IsMenuItem<_>,
                     &save_item as &dyn IsMenuItem<_>,
                     &PredefinedMenuItem::separator(app_handle)?,
@@ -668,6 +671,30 @@ pub fn run() {
                     }
                     "save" => {
                         let _ = app_handle_clone.emit("menu-save", ());
+                    }
+                    "new_window" => {
+                        let window_label = format!("window-{}", std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis());
+                        match tauri::WebviewWindowBuilder::new(
+                            &app_handle_clone,
+                            &window_label,
+                            tauri::WebviewUrl::App("index.html".into())
+                        )
+                        .title("JSON Editor")
+                        .inner_size(1200.0, 800.0)
+                        .min_inner_size(800.0, 600.0)
+                        .resizable(true)
+                        .build() {
+                            Ok(window) => {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to create new window: {}", e);
+                            }
+                        }
                     }
                     _ => {}
                 }
